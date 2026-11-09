@@ -13,6 +13,7 @@
 #include "platform/log.hpp"
 #include "platform/paths.hpp"
 #include "ui/common.hpp"
+#include "ui/text_sheet.hpp"
 
 namespace mk::ui::update {
 
@@ -25,32 +26,12 @@ std::atomic<bool> g_checking{false};
 std::atomic<bool> g_downloading{false};
 
 void note(const std::string& text) {
-    auto* d = new brls::Dialog(text);
+    auto* d = makeShortDialog(text);
     d->addButton(tr("common/ok_short"), [] {});
     d->open();
 }
 
 std::string releasesUrl() { return std::string("github.com/") + up::kRepo + "/releases"; }
-
-// Колонка окна: заголовок, подзаголовок, «что нового».
-brls::Box* offerContent(const up::Release& r) {
-    auto* box = makeColumn();
-    box->setPadding(30, 40, 24, 40);
-    box->addView(makeLabel(trkf("update/available_title", r.version), 28, colText()));
-    auto* cur = makeLabel(trkf("update/current", MK_APP_VERSION), 18, colSub());
-    cur->setMarginTop(6);
-    box->addView(cur);
-    // «Что нового» — нейтральной подкарточкой; ставить некуда — жёлтой.
-    auto* news = makeSubCard(Tone::Neutral, icon::kInfo, trk("update/whats_new"), 20);
-    news->setMarginTop(16);
-    const std::string notes = up::notesForDisplay(r.body, 520, 9);
-    addSubLine(news, notes.empty() ? trk("update/no_notes") : notes, colText(), 17);
-    box->addView(news);
-    if (up::selfPath().empty()) {
-        box->addView(makeSubCard(Tone::Warn, icon::kWarn, trkf("update/no_self_path", up::assetName(), releasesUrl()), 17));
-    }
-    return box;
-}
 
 std::string reasonText(const std::string& code) {
     if (code == "net") return trk("update/reason_net");
@@ -204,22 +185,40 @@ void checkNow() {
     check(true);
 }
 
+// Экран длинного текста, а не диалог: у диалога borealis не больше трёх кнопок и нет прокрутки, а описание
+// выпуска — главное, ради чего обновляются; оно показывается целиком.
 void showOffer(const up::Release& r) {
-    auto* d = new brls::Dialog(offerContent(r));
+    TextSheet s;
+    s.title = trk("update/settings_title");
+    s.headline = trkf("update/available_title", r.version);
+    s.lead = trkf("update/current", MK_APP_VERSION);
+    SheetBlock news;
+    news.title = trk("update/whats_new");
+    news.icon = icon::kInfo;
+    const std::string notes = up::notesForDisplay(r.body, std::string::npos, std::string::npos);
+    news.lines = notes.empty() ? std::vector<std::string>{trk("update/no_notes")} : splitLines(notes);
+    s.blocks.push_back(news);
     if (up::selfPath().empty()) {
-        d->addButton(tr("common/ok_short"), [] {});
-        d->open();
+        SheetBlock warn;
+        warn.tone = Tone::Warn;
+        warn.icon = icon::kWarn;
+        warn.title = trkf("update/no_self_path", up::assetName(), releasesUrl());
+        s.blocks.push_back(warn);
+        s.buttons.push_back({tr("common/close"), &brls::BUTTONSTYLE_BORDERED, nullptr, "update_close"});
+        openTextSheet(std::move(s));
         return;
     }
-    d->addButton(trk("update/btn_later"), [] {});
     const std::string ver = r.version;
-    d->addButton(trk("update/btn_skip"), [ver] {
-        cfg::setString(cfg::kUpdateSkip, ver);
-        MK_LOG("update: version %s skipped by the user", ver.c_str());
-    });
-    d->addButton(trk("update/btn_update"), [r] { startDownload(r); });
-    if (brls::View* b = d->getView("brls/dialog/button3")) d->setLastFocusedView(b);
-    d->open();
+    s.buttons.push_back({trk("update/btn_update"), &brls::BUTTONSTYLE_PRIMARY, [r] { startDownload(r); }, "update_go"});
+    s.buttons.push_back({trk("update/btn_later"), &brls::BUTTONSTYLE_BORDERED, nullptr, "update_later"});
+    s.buttons.push_back({trk("update/btn_skip"), &brls::BUTTONSTYLE_BORDERLESS,
+                         [ver] {
+                             cfg::setString(cfg::kUpdateSkip, ver);
+                             MK_LOG("update: version %s skipped by the user", ver.c_str());
+                         },
+                         "update_skip"});
+    s.focus = 0;
+    openTextSheet(std::move(s));
 }
 
 }  // namespace mk::ui::update

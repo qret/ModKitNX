@@ -7,6 +7,7 @@
 #include "ui/game_activity.hpp"
 #include "ui/language_activity.hpp"
 #include "ui/settings_activity.hpp"
+#include "ui/text_sheet.hpp"
 
 namespace mk::ui {
 
@@ -121,7 +122,7 @@ void GamesActivity::applyTexts() {
     setFrameTitle(this, "games/title");
     // B на главном экране — выход с вопросом (как у borealis), но тексты — нашим переводом.
     registerAction(tr("hint/back"), brls::ControllerButton::BUTTON_B, [](brls::View*) {
-        auto* dlg = new brls::Dialog(tr("common/exit_confirm"));
+        auto* dlg = makeShortDialog(tr("common/exit_confirm"));
         dlg->addButton(tr("common/cancel"), [] {});
         dlg->addButton(tr("common/ok_short"), [] { brls::Application::quit(); });
         dlg->open();

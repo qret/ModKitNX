@@ -11,6 +11,7 @@
 #include "ui/no_keys_activity.hpp"
 #include "ui/operation_activity.hpp"
 #include "ui/sdk_harvest_activity.hpp"
+#include "ui/text_sheet.hpp"
 
 namespace mk::ui {
 
@@ -385,17 +386,18 @@ void GameActivity::buildSdk(brls::Box* parent) {
     buttons->setMarginTop(12);
     sdkButtons_ = makeRow();
     buttons->addView(sdkButtons_);
-    buttons->addView(makeButton(tr("sdk/details"), &brls::BUTTONSTYLE_BORDERLESS, [this] {
-        std::string text = tr("sdk/details_head") + "\n";
-        for (const auto& l : sdk_) {
-            text += "• " + l.fileName + " — sdk " + l.version + "\n";
-            for (const auto& p : l.allPaths) text += "    " + p + "\n";
-        }
-        text += "\n" + tr("sdk/details_rule");
-        auto* dlg = new brls::Dialog(text);
-        dlg->addButton(tr("common/ok"), [] {});
-        dlg->open();
-    }));
+    auto* details = makeButton(tr("sdk/details"), &brls::BUTTONSTYLE_BORDERLESS, [this] {
+        // По блоку на sdk: имя файла и версия, ниже — все пути, где она лежит (пути переносятся посимвольно).
+        TextSheet s;
+        s.title = tr("sdk/details");
+        s.headline = row_.name;
+        s.lead = tr("sdk/details_head");
+        for (const auto& l : sdk_) s.blocks.push_back({"sdk " + l.version + " · " + l.fileName, l.allPaths});
+        s.note = tr("sdk/details_rule");
+        openTextSheet(std::move(s));
+    });
+    details->setId("sdk_details_btn");
+    buttons->addView(details);
     card->addView(buttons);
     parent->addView(card);
 }
@@ -532,25 +534,33 @@ void GameActivity::refreshFixes() {
     // Чего модуль не восполнит — только для sdk, выбранной для подмены; пробелов нет — ничего не показываем.
     if (forSwap) addGaps(*f);
 
-    // Технические подробности: символ, импорт, вид, решение — и правило Vulkan.
-    std::string text = tr("fixes/title") + " · sdk " + ver + "\n";
+    // Технические подробности: по блоку на функцию — название, символ отдельной строкой, импорт, вид, решение;
+    // тон блока — как в подкарточках выше (исправит — зелёный, не вмешивается с оговоркой — жёлтый). В конце —
+    // правило Vulkan.
+    TextSheet tech;
+    tech.title = tr("fixes/tech_btn");
+    tech.headline = tr("fixes/title") + " · sdk " + ver;
+    tech.lead = tr(src);
     for (const auto& l : f->fixes) {
         std::string who;
         for (const auto& m : l.importers) who += (who.empty() ? "" : ", ") + m;
-        text += "\n• " + nameOf(l.id) + "\n    " +
-                trf("fixes/tech", l.symbol, who.empty() ? "—" : who, l.kind, l.scope, l.choice, l.why) + "\n";
+        SheetBlock blk;
+        blk.title = nameOf(l.id);
+        blk.lines = {l.symbol, trf("fixes/tech_import", who.empty() ? "—" : who), trf("fixes/tech_kind", l.kind, l.scope),
+                     trf("fixes/tech_choice", l.choice, l.why)};
+        if (!l.importers.empty()) {
+            if (l.choice == "own") blk.tone = Tone::Ok;
+            else if (l.why == "StubNoVersion" || l.why == "NoSdkDefined") blk.tone = Tone::Warn;
+        }
+        tech.blocks.push_back(std::move(blk));
     }
-    text += "\n" + (b.vulkan ? trf("fixes/vk_rule_vulkan", b.vulkanModule)
-                             : (b.opengl ? tr("fixes/vk_rule_gl") : tr("fixes/vk_rule_other")));
+    tech.note = b.vulkan ? trf("fixes/vk_rule_vulkan", b.vulkanModule)
+                         : (b.opengl ? tr("fixes/vk_rule_gl") : tr("fixes/vk_rule_other"));
     auto* row = makeRow();
     row->setMarginTop(10);
-    auto* tech = makeButton(tr("fixes/tech_btn"), &brls::BUTTONSTYLE_BORDERLESS, [text] {
-        auto* dlg = new brls::Dialog(text);
-        dlg->addButton(tr("common/ok"), [] {});
-        dlg->open();
-    });
-    tech->setId("fixes_tech_btn");
-    row->addView(tech);
+    auto* techBtn = makeButton(tr("fixes/tech_btn"), &brls::BUTTONSTYLE_BORDERLESS, [tech] { openTextSheet(tech); });
+    techBtn->setId("fixes_tech_btn");
+    row->addView(techBtn);
     fixesBox_->addView(row);
 }
 
@@ -582,20 +592,24 @@ void GameActivity::addGaps(const mk::app::FixForecastView& f) {
         addSubLine(sc, list(weak), colText(), 17);
         addSubLine(sc, tr("fixes/gaps_weak_note"), colSub(), 17);
     }
-    std::string text = trf("fixes/gaps_details_head", ver) + "\n";
+    // Полный список — по блоку на функцию: имя (длинное переносится посимвольно), что с ней в sdk, кто импортирует.
+    // Обязательные — жёлтые, необязательные (слабые ссылки) — серые.
+    TextSheet sheet;
+    sheet.title = tr("fixes/gaps_details");
+    sheet.headline = trf("fixes/gaps_details_head", ver);
     for (const auto& g : f.gaps) {
         std::string who;
         for (const auto& m : g.importers) who += (who.empty() ? "" : ", ") + m;
-        text += "• " + g.symbol + " — " + tr(g.kind == "STUB" ? "fixes/gaps_k_stub" : "fixes/gaps_k_missing") +
-                (g.weak ? ", " + tr("fixes/gaps_k_weak") : std::string()) + " — " + who + "\n";
+        SheetBlock blk;
+        blk.title = g.symbol;
+        blk.tone = g.weak ? Tone::Neutral : Tone::Warn;
+        blk.lines = {tr(g.kind == "STUB" ? "fixes/gaps_k_stub" : "fixes/gaps_k_missing") +
+                         (g.weak ? ", " + tr("fixes/gaps_k_weak") : std::string()),
+                     trf("fixes/tech_import", who.empty() ? "—" : who)};
+        sheet.blocks.push_back(std::move(blk));
     }
-    if (!weak.empty()) text += "\n" + tr("fixes/gaps_weak_note");
-    text += "\n" + tr("fixes/gaps_details_note");
-    auto* details = makeButton(tr("fixes/gaps_details"), &brls::BUTTONSTYLE_BORDERED, [text] {
-        auto* dlg = new brls::Dialog(text);
-        dlg->addButton(tr("common/ok"), [] {});
-        dlg->open();
-    });
+    sheet.note = (weak.empty() ? std::string() : tr("fixes/gaps_weak_note") + "\n\n") + tr("fixes/gaps_details_note");
+    auto* details = makeButton(tr("fixes/gaps_details"), &brls::BUTTONSTYLE_BORDERED, [sheet] { openTextSheet(sheet); });
     details->setId("gaps_details_btn");
     details->setHeight(48);
     addSubView(sc, details);

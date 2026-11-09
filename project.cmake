@@ -15,5 +15,5 @@
 # APP_AUTHOR   - shown in the Homebrew Menu (NACP author field).
 
 set(APP_NAME    "ModKitNX")
-set(APP_VERSION "1.0.1")
+set(APP_VERSION "1.0.2")
 set(APP_AUTHOR  "qret")

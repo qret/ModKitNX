@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // ModKitNX — «Найти sdk в других играх». См. ui/sdk_harvest_activity.hpp.
 #include "ui/sdk_harvest_activity.hpp"
+#include "ui/text_sheet.hpp"
 
 #include "app_model.hpp"
 #include "platform/paths.hpp"
@@ -163,15 +164,18 @@ void SdkHarvestActivity::showChoice() {
     go->setId("harvest_save");
     buttons->addView(go);
     buttons->addView(makeButton(trk("sdkscan/btn_details"), &brls::BUTTONSTYLE_BORDERLESS, [this] {
-        std::string text = trk("sdkscan/details_head") + "\n";
+        // По блоку на найденную sdk: версия и начало sha256, ниже — игры, в которых она лежит.
+        TextSheet s;
+        s.title = trk("sdkscan/btn_details");
+        s.headline = trk("sdkscan/details_head");
         for (const auto& l : view_.lines) {
-            text += "\n" + trkv("sdkscan/details_line", {l.version, shortSha(l.sha256)}) + "\n";
-            for (const auto& g : l.games) text += "    " + trkv("sdkscan/details_game", {gameWithVersion(g), g.tid}) + "\n";
+            SheetBlock blk;
+            blk.title = trkv("sdkscan/details_line", {l.version, shortSha(l.sha256)});
+            for (const auto& g : l.games) blk.lines.push_back(trkv("sdkscan/details_game", {gameWithVersion(g), g.tid}));
+            s.blocks.push_back(std::move(blk));
         }
-        if (view_.tooNew > 0) text += "\n" + trkv("sdkscan/details_too_new", {std::to_string(view_.tooNew), view_.firmware});
-        auto* dlg = new brls::Dialog(text);
-        dlg->addButton(tr("common/ok"), [] {});
-        dlg->open();
+        if (view_.tooNew > 0) s.note = trkv("sdkscan/details_too_new", {std::to_string(view_.tooNew), view_.firmware});
+        openTextSheet(std::move(s));
     }));
     buttons->addView(makeButton(tr("common/back"), &brls::BUTTONSTYLE_BORDERED, [this] { finish(); }));
     body->addView(buttons);

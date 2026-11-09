@@ -310,6 +310,47 @@ void testFiles(const std::string& dir) {
     CHECK(readText(self) == std::string(third.begin(), third.end()), "новый на месте");
 }
 
+// Перезапуск при выходе: порядок «замена → проверка пути → next load». Загрузчик падает на отсутствующем файле
+// или не-NRO, поэтому planRelaunch смотрит файл уже после замены.
+void testRelaunch(const std::string& dir) {
+    const std::string self = dir + "/relaunch/ModKitNX.nro";
+    ::mkdir((dir + "/relaunch").c_str(), 0777);
+    up::RelaunchPlan p = up::planRelaunch(false, true, self);
+    CHECK(!p.relaunch && p.reason == "not_requested", "не просили — обычный выход");
+    p = up::planRelaunch(true, false, self);
+    CHECK(!p.relaunch && p.reason == "no_loader", "загрузчик без next load — закрыть");
+    p = up::planRelaunch(true, true, "");
+    CHECK(!p.relaunch && p.reason == "no_self", "путь неизвестен — закрыть");
+    p = up::planRelaunch(true, true, self);
+    CHECK(!p.relaunch && p.reason == "self_missing", "файла нет — загрузчику не отдавать");
+    writeBytes(self, std::vector<uint8_t>(0x80, 'x'));
+    p = up::planRelaunch(true, true, self);
+    CHECK(!p.relaunch && p.reason == "not_nro", "на месте не NRO — загрузчику не отдавать");
+    writeBytes(self, std::vector<uint8_t>(0x12, 0));
+    p = up::planRelaunch(true, true, self);
+    CHECK(!p.relaunch && p.reason == "not_nro", "обрезанный заголовок — не NRO");
+
+    // Полный путь: старая версия на месте, .new скачан → выход: замена → план → новая версия по тому же пути.
+    const auto cur = makeNro("ModKitNX", "0.1.0"), next = makeNro("ModKitNX", "0.2.0");
+    writeBytes(self, cur);
+    std::string err;
+    CHECK(up::stagePending(self, next, err), "relaunch: .new записан");
+    CHECK(up::swapInPending(self, "0.1.0", err), "relaunch: замена при выходе");
+    p = up::planRelaunch(true, true, self);
+    CHECK(p.relaunch && p.reason == "ok" && p.path == self && p.argv == self, "после замены — свой путь загрузчику");
+    CHECK(readText(p.path) == std::string(next.begin(), next.end()), "по пути next load лежит новая версия");
+
+    // Путь с пробелом — argv в кавычках; путь не влезает в буфер загрузчика — не отдавать.
+    const std::string spaced = dir + "/relaunch/My Apps/ModKitNX.nro";
+    ::mkdir((dir + "/relaunch/My Apps").c_str(), 0777);
+    writeBytes(spaced, next);
+    p = up::planRelaunch(true, true, spaced);
+    CHECK(p.relaunch && p.path == spaced && p.argv == "\"" + spaced + "\"", "путь с пробелом — argv в кавычках");
+    const std::string longDir = dir + "/relaunch/" + std::string(up::kLoaderPathMax, 'a');
+    p = up::planRelaunch(true, true, longDir + "/ModKitNX.nro");
+    CHECK(!p.relaunch && p.reason == "too_long", "путь длиннее буфера загрузчика");
+}
+
 void testConfig(const std::string& dir) {
     const std::string p = dir + "/config.json";
     cfg::setPathForTests(p);
@@ -354,6 +395,7 @@ int main() {
     testNotes();
     testNro();
     testFiles(dir);
+    testRelaunch(dir);
     testConfig(dir);
     std::printf("app_update_tests: %d passed, %d failed (temp %s)\n", g_pass, g_fail, dir);
     return g_fail == 0 ? 0 : 1;

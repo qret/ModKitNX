@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // ModKitNX — план → подтверждение → прогресс → итог. См. ui/operation_activity.hpp.
 #include "ui/operation_activity.hpp"
+#include "ui/text_sheet.hpp"
 
 #include <algorithm>
 
@@ -146,7 +147,7 @@ void OperationActivity::confirmThenRun() {
         return;
     }
     // Удаление — с отдельным подтверждением (спецификация: показать список и спросить).
-    auto* dlg = new brls::Dialog(tr("op/confirm_remove"));
+    auto* dlg = makeShortDialog(tr("op/confirm_remove"));
     dlg->addButton(tr("common/cancel"), [] {});
     AliveToken alive = alive_;
     dlg->addButton(tr("op/" + std::string(opKey(op_)) + "/confirm_btn"), [this, alive] {

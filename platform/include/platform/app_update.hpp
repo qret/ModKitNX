@@ -13,7 +13,9 @@
 //   4. замена — при выходе из приложения, когда romfs отмонтирован (работающий .nro открыт загрузчиком и romfs):
 //      свой .nro → .old, .new → свой .nro; не вышло — .old обратно. .old убирается при следующем успешном
 //      старте (cleanupAfterStart в init); .new не новее работающей версии — в .new.stale, не применяется.
-//   5. «Перезапустить» — envSetNextLoad на свой же путь и выход: загрузчик запускает уже новую версию.
+//   5. «Перезапустить» — после замены (п. 4) свой же путь отдаётся загрузчику (envSetNextLoad) и выход идёт в него,
+//      а не в HOME: nx-hbloader сразу грузит уже новую версию, без hbmenu. Обычный выход закрывает тайтл, как
+//      раньше (exitToHomeMode). Почему так — у planRelaunch ниже.
 //
 // Части 1–4 без libnx здесь (platform/src/app_update.cpp) и проверяются хост-тестами
 // (tests/host/app_update_tests.cpp); сеть и libnx — platform/src/app_update_nx.cpp (только Switch-сборка), в
@@ -102,6 +104,26 @@ inline std::string stalePath(const std::string& self) { return self + ".new.stal
 // а "…" в начале аргумента держит пробелы и снимает кавычки.
 std::string restartArgv(const std::string& self);
 
+// Перезапуск при выходе. Обычный выход закрывает тайтл: main включает exitToHomeMode borealis (это
+// __nx_applet_exit_mode = 1 libnx), и тогда _appletCleanup (libnx nx/source/services/applet.c) подменяет адрес
+// возврата в загрузчик на собственный выход процесса — envSetNextLoad при этом ни на что не влияет. Для перезапуска
+// режим возвращается в 0: libnx отдаёт управление nx-hbloader, тот (loadNro, source/main.c) открывает g_nextNroPath
+// (char[512]) с аргументами g_nextArgv (char[2048]). Нет файла или это не NRO — загрузчик падает
+// (diagAbortWithResult), поэтому путь проверяется после замены, перед самым выходом.
+inline constexpr size_t kLoaderPathMax = 512;    // nx-hbloader: g_nextNroPath, вместе с завершающим нулём
+inline constexpr size_t kLoaderArgvMax = 2048;   // nx-hbloader: g_nextArgv, вместе с завершающим нулём
+struct RelaunchPlan {
+    bool relaunch = false;   // true — отдать path/argv загрузчику и выйти в него; false — закрыть тайтл
+    std::string path, argv;
+    // Причина для журнала: ok; not_requested — не просили; no_loader — загрузчик без next load; no_self — путь
+    // своего .nro неизвестен; too_long — путь или argv не помещаются в буфер загрузчика; self_missing — файла нет;
+    // not_nro — на месте не NRO (загрузчик бы упал).
+    std::string reason;
+};
+// requested — нажато «Перезапустить»; loaderHasNextLoad — envHasNextLoad(); self — путь своего .nro.
+// Читает заголовок self (первые 0x14 байт: "NRO0" @0x10).
+RelaunchPlan planRelaunch(bool requested, bool loaderHasNextLoad, const std::string& self);
+
 // Записать проверенный образ как <self>.new: сначала .new.part, перечитать и сверить, затем переименовать.
 // false — error: код причины (write, readback, rename).
 bool stagePending(const std::string& self, const std::vector<uint8_t>& data, std::string& error);
@@ -129,10 +151,14 @@ bool download(const Release& r, std::vector<uint8_t>& out, const std::function<b
               std::string& error);
 // Проверка образа аппаратным/программным sha256 платформы.
 NroInfo verifyDownloaded(const std::vector<uint8_t>& data, const Release& r);
-// При выходе: если лежит .new — отмонтировать romfs и заменить (swapInPending). Последний вызов main.
+// При выходе: если лежит .new — отмонтировать romfs и заменить (swapInPending). Следом — relaunchAtExit.
 void applyPendingAtExit();
-// Перезапуск: попросить загрузчик запустить свой .nro снова и выйти. false — загрузчик не умеет (закрыть вручную).
+// «Перезапустить»: запомнить просьбу (сам перезапуск — relaunchAtExit при выходе). false — загрузчик не умеет
+// запускать следующий .nro или путь своего .nro неизвестен: закрыть и открыть вручную.
 bool restartNow();
+// При выходе, после applyPendingAtExit: по planRelaunch — envSetNextLoad и __nx_applet_exit_mode = 0 (выход в
+// загрузчик, он сразу запустит свой .nro) или ничего (тайтл закрывается, как обычно). Всё — в журнал.
+void relaunchAtExit();
 // Выход приложения: прервать загрузку/проверку на следующем шаге и дождаться (не дольше ms) конца фоновой работы.
 void abortAll();
 bool waitIdle(int ms);

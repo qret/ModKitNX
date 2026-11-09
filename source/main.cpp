@@ -128,6 +128,9 @@ int main(int argc, char* argv[]) {
     if (!mk::plat::update::waitIdle(5000)) MK_LOG("main: update download still running at exit");
     // Скачанная версия — на место своего .nro (romfs отмонтируется; после этого romfs не читать).
     mk::plat::update::applyPendingAtExit();
+    // «Перезапустить»: выход в загрузчик, а не в HOME, — он сразу запустит свой .nro (уже новую версию). Здесь из
+    // потоков жив только этот: поток задач borealis Application::exit уже дождался, сеть — waitIdle выше.
+    mk::plat::update::relaunchAtExit();
     mk::app::Model::instance().shutdown();
     mk::plat::log::close();
     fsdevCommitDevice("sdmc");

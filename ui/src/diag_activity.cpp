@@ -3,6 +3,7 @@
 // Отчёты — по играм: sdmc:/switch/<APP>/logs/<TID>/diag-NNNN.txt и gfx-NNNN.txt (последние 5;
 // список — mk::logs::list_reports). Нет ни одного — запасной старый файл в корне карты.
 #include "ui/diag_activity.hpp"
+#include "ui/text_sheet.hpp"
 
 #include <sys/stat.h>
 
@@ -59,10 +60,10 @@ void addStages(brls::Box* card, const std::vector<pd::Stage>& stages, const char
     }
 }
 
-// Сырой текст: не больше 200 строк, чтобы экран не тормозил.
+// Сырой текст — кнопкой на экран длинного текста (там он прокручивается сам, без фокуса): на этом экране фокус
+// стоит на кнопке «Назад» внизу, и длинный текст выше неё с крестовины было бы не пролистать. Не больше 200 строк,
+// чтобы экран не тормозил.
 void addRaw(brls::Box* parent, const std::string& name, const std::string& text) {
-    auto* card = makeCard();
-    card->addView(makeLabel(trf("diag/raw_title_file", name), 18, colSub()));
     std::string cut;
     int lines = 0;
     size_t pos = 0;
@@ -74,8 +75,18 @@ void addRaw(brls::Box* parent, const std::string& name, const std::string& text)
         ++lines;
     }
     if (pos < text.size()) cut += "\n" + tr("diag/raw_cut");
-    card->addView(makeLabel(cut, 14, colText()));
-    parent->addView(card);
+    TextSheet s;
+    s.title = tr("diag/title");
+    s.headline = trf("diag/raw_title_file", name);
+    SheetBlock blk;
+    blk.lines = {cut};
+    blk.lineSize = 15;
+    s.blocks.push_back(std::move(blk));
+    auto* btn = makeButton(trf("diag/raw_title_file", name), &brls::BUTTONSTYLE_BORDERED, [s] { openTextSheet(s); });
+    btn->setId("diag_raw_btn");
+    btn->setHeight(48);
+    btn->setMarginBottom(10);
+    parent->addView(btn);
 }
 
 // Старый отчёт (корень карты) от этой игры: первая строка нового вида с её TitleID или TitleID в тексте.

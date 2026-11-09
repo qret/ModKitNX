@@ -377,6 +377,45 @@ std::string restartArgv(const std::string& self) {
     return "\"" + self + "\"";
 }
 
+RelaunchPlan planRelaunch(bool requested, bool loaderHasNextLoad, const std::string& self) {
+    RelaunchPlan p;
+    if (!requested) {
+        p.reason = "not_requested";
+        return p;
+    }
+    if (!loaderHasNextLoad) {
+        p.reason = "no_loader";
+        return p;
+    }
+    if (self.empty()) {
+        p.reason = "no_self";
+        return p;
+    }
+    const std::string argv = restartArgv(self);
+    if (self.size() >= kLoaderPathMax || argv.size() >= kLoaderArgvMax) {
+        p.reason = "too_long";
+        return p;
+    }
+    // Загрузчик читает NroStart (0x10) и заголовок с "NRO0" и падает, если файла нет или он не NRO.
+    FILE* f = std::fopen(self.c_str(), "rb");
+    if (!f) {
+        p.reason = "self_missing";
+        return p;
+    }
+    uint8_t head[0x14] = {0};
+    const bool got = std::fread(head, 1, sizeof(head), f) == sizeof(head);
+    std::fclose(f);
+    if (!got || std::memcmp(head + 0x10, "NRO0", 4) != 0) {
+        p.reason = "not_nro";
+        return p;
+    }
+    p.relaunch = true;
+    p.path = self;
+    p.argv = argv;
+    p.reason = "ok";
+    return p;
+}
+
 bool stagePending(const std::string& self, const std::vector<uint8_t>& data, std::string& error) {
     const std::string part = partPath(self), dest = pendingPath(self);
     if (fileExists(part)) std::remove(part.c_str());   // наш недописанный файл прошлой попытки

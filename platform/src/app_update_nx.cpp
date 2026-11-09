@@ -25,11 +25,16 @@
 #include "platform/log.hpp"
 #include "platform/paths.hpp"
 
+// libnx (nx/source/services/applet.c): 1 — при выходе закрыть процесс (тайтл уходит в HOME), 0 — вернуться в
+// загрузчик. Borealis ставит его в exitToHomeMode; к концу main платформы borealis уже нет — пишем напрямую.
+extern "C" u32 __nx_applet_exit_mode;
+
 namespace mk::plat::update {
 
 namespace {
 
 std::string g_self;
+bool g_restart = false;   // нажато «Перезапустить» (поток UI; читается в main после выхода из цикла)
 std::atomic<bool> g_abort{false};
 std::atomic<int> g_busy{0};
 
@@ -203,14 +208,36 @@ void applyPendingAtExit() {
 }
 
 bool restartNow() {
-    if (g_self.empty() || !envHasNextLoad()) {
-        MK_LOG("update: loader cannot relaunch the app");
+    const bool hasNext = envHasNextLoad();
+    if (g_self.empty() || !hasNext) {
+        MK_LOG("update: restart: not possible (envHasNextLoad=%d, self %s)", hasNext ? 1 : 0,
+               g_self.empty() ? "unknown" : "known");
         return false;
     }
-    // argv — строка, её режет argvSetup libnx по пробелам: путь с пробелом — в кавычках (restartArgv).
-    const std::string args = restartArgv(g_self);
-    envSetNextLoad(g_self.c_str(), args.c_str());
+    // Путь загрузчику отдаётся при выходе (relaunchAtExit): сначала замена .nro, потом проверка, что он на месте.
+    g_restart = true;
+    MK_LOG("update: restart requested (envHasNextLoad=1)");
     return true;
+}
+
+void relaunchAtExit() {
+    const RelaunchPlan p = planRelaunch(g_restart, envHasNextLoad(), g_self);
+    if (!p.relaunch) {
+        // Не просили — обычный выход, писать нечего. Просили, но нельзя — тайтл закрывается, как обычно.
+        if (g_restart) MK_LOG("update: relaunch cancelled (%s): the app closes", p.reason.c_str());
+        return;
+    }
+    // argv — строка, её режет argvSetup libnx по пробелам: путь с пробелом — в кавычках (restartArgv).
+    const Result rc = envSetNextLoad(p.path.c_str(), p.argv.c_str());
+    if (R_FAILED(rc)) {
+        MK_LOG("update: relaunch cancelled: envSetNextLoad failed 0x%x: the app closes", rc);
+        return;
+    }
+    // Без этого libnx при выходе закрывает процесс сам (exitToHomeMode) и загрузчик next load не увидит.
+    const u32 was = __nx_applet_exit_mode;
+    __nx_applet_exit_mode = 0;
+    MK_LOG("update: relaunch: envSetNextLoad(%s, %s)=0x%x, exit mode %u -> 0 (back to the loader)", p.path.c_str(),
+           p.argv.c_str(), rc, was);
 }
 
 void abortAll() { g_abort = true; }
