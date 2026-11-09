@@ -71,6 +71,32 @@ brls::Box* makeSectionTitle(const std::string& text);     // заголовок 
 brls::Box* makeInfoLine(const std::string& key, const std::string& value, NVGcolor valueColor);
 brls::Box* makeBadge(const std::string& text, NVGcolor bg);
 brls::Button* makeButton(const std::string& text, const brls::ButtonStyle* style, std::function<void()> onClick);
+// Опасная кнопка (удаление): красный фон mk/danger_bg, белый текст mk/danger_text — в обеих темах; рамка фокуса —
+// как у основной кнопки borealis. В borealis красного стиля нет — свой стиль на ключах темы.
+const brls::ButtonStyle* dangerStyle();
+
+// ---- подкарточки: смысловые группы внутри карточки (вердикт отдельно от подробностей) ----
+// Тон задаёт фон (mk/<тон>_bg) и цвет значка и заголовка (mk/<тон>_text): в тёмной теме — светлее, в светлой —
+// темнее основного цвета, чтобы читалось на тонированном фоне. Neutral — серый фон, серый текст.
+enum class Tone { Ok, Warn, Bad, Info, Neutral };
+NVGcolor toneText(Tone tone);
+NVGcolor toneBg(Tone tone);
+// Значки — шрифт Material Icons borealis (romfs:/material, запасной шрифт текста). В нашем font.ttf таких знаков
+// нет, а коды E000–E1FF заняты значками кнопок Switch (системный шрифт Ext стоит в цепочке раньше Material).
+namespace icon {
+inline const char* const kOk = "";     // check_circle
+inline const char* const kWarn = "";   // report_problem (треугольник)
+inline const char* const kBad = "";    // cancel
+inline const char* const kInfo = "";   // info
+inline const char* const kTip = "";    // lightbulb_outline
+}  // namespace icon
+const char* toneIcon(Tone tone);   // значок тона по умолчанию (Neutral — info)
+// Скруглённая тонированная подкарточка: строка «значок + заголовок» (заголовок переносится; пустой — без строки
+// заголовка). Строки содержимого — addSubLine / addSubView: с отступом под текст заголовка.
+// titleSize — меньше, когда заголовок — целая фраза (вердикт, пояснение).
+brls::Box* makeSubCard(Tone tone, const std::string& iconGlyph, const std::string& title, float titleSize = 21);
+brls::Label* addSubLine(brls::Box* sub, const std::string& text, NVGcolor color, float size = 18);
+void addSubView(brls::Box* sub, brls::View* view);
 
 // Строка выбора «● вариант   справа-крупно» (радиокнопка). Фокусируемая, A — выбрать.
 class ChoiceRow : public brls::Box {

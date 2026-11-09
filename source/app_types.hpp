@@ -52,6 +52,7 @@ struct SdkLine {
     bool sameVersionOtherBuild = false;
     std::vector<std::string> allPaths;  // «Подробности»
     std::string fromGame, fromGameVersion;   // взята из установленной игры («Найти sdk в других играх»)
+    std::string sha256;      // содержимое (ядро mk::scan_sdk); пусто — не известно
 };
 
 // Блок «sdk» на экране игры.
@@ -75,12 +76,21 @@ struct FixLine {
     std::vector<std::string> importers;    // модули игры, которые импортируют символ; пусто — не нужен игре
     std::string own;                       // что делает своя реализация (текст каталога, RU)
 };
+// Нужная игре функция, которой в этой sdk нет или там пустая заглушка (а в своей sdk игры — настоящая), и которую
+// модуль восполнять не умеет (её нет в каталоге) — mk::sdk_gaps.
+struct GapLine {
+    std::string symbol;                    // как в .dynsym
+    std::string kind;                      // MISSING | STUB
+    bool weak = false;                     // слабый импорт: rtld оставит ноль, игра может проверить сама
+    std::vector<std::string> importers;
+};
 struct FixForecastView {
     bool ok = false;                       // прогноз посчитан
     std::string sdkVersion;                // «19.3.13»
     bool sdkKnown = false;                 // это nnSdk
     bool swapped = false;                  // sdk старше библиотек игры
     std::vector<FixLine> fixes;
+    std::vector<GapLine> gaps;             // пусто — пробелов нет (или не проверялось: FixesBlock::ownSdkOk)
     Text error;                            // почему не посчитан (ошибка ядра)
 };
 struct FixesBlock {
@@ -88,6 +98,8 @@ struct FixesBlock {
     std::string gameVersion;               // наибольшая SDK MW библиотек игры
     bool vulkan = false, opengl = false;
     std::string vulkanModule;
+    bool ownSdkOk = false;                 // своя sdk игры прочитана — пробелы sdk посчитаны
+    std::string ownSdkError;               // код ошибки ядра, если нет
     Text error;
     FixForecastView current;               // sdk, которая у игры сейчас (подменённая на карте, иначе родная)
     bool currentIsSwap = false;
@@ -131,6 +143,9 @@ struct GameDetails {
     // Вид сборки стоящего модуля — по квитанции (diag, diag_gfx, module_variant; формат 1).
     bool debugInstalled = false;    // стоит отладочная сборка
     std::string moduleVariant;      // «autofix», «autofix-diag»…; "" — прежняя квитанция вида не называет
+    // Что стоит по квитанции — чтобы понять, отличается ли выбор на экране (причина «Переустановить»).
+    std::string installedModPath;   // mod.source — папка мода; "" — без мода
+    std::string installedSdkSha;    // sdk_swap.sha256 нашей подмены; "" — нет или не записано
 
     SdkBlock sdk;
     FixesBlock fixes;

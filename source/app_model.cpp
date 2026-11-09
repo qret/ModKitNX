@@ -134,6 +134,7 @@ std::vector<SdkLine> Model::sdkList(bool reload) {
         l.allPaths = f.allPaths;
         l.fromGame = f.fromGame;
         l.fromGameVersion = f.fromGameVersion;
+        l.sha256 = f.sha256Hex;
         out.push_back(std::move(l));
     }
     return out;

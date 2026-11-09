@@ -101,6 +101,118 @@ void applyThemeAtStartup(brls::ThemeVariant system) {
     l.addColor("mk/panel", nvgRGB(255, 255, 255));
     l.addColor("mk/line", nvgRGBA(0, 0, 0, 38));
     l.addColor("mk/track", nvgRGBA(0, 0, 0, 28));
+
+    // Подкарточки: фон тона и текст на нём. Тёмная — полупрозрачный цвет поверх карточки, текст светлее основного;
+    // светлая — бледная заливка, текст темнее основного.
+    d.addColor("mk/ok_bg", nvgRGBA(76, 175, 80, 46));
+    d.addColor("mk/warn_bg", nvgRGBA(255, 152, 0, 40));
+    d.addColor("mk/bad_bg", nvgRGBA(229, 57, 53, 46));
+    d.addColor("mk/info_bg", nvgRGBA(41, 182, 246, 38));
+    d.addColor("mk/neutral_bg", nvgRGBA(255, 255, 255, 14));
+    d.addColor("mk/ok_text", nvgRGB(129, 199, 132));
+    d.addColor("mk/warn_text", nvgRGB(255, 183, 77));
+    d.addColor("mk/bad_text", nvgRGB(239, 154, 154));
+    d.addColor("mk/info_text", nvgRGB(129, 212, 250));
+    l.addColor("mk/ok_bg", nvgRGB(232, 245, 233));
+    l.addColor("mk/warn_bg", nvgRGB(255, 243, 224));
+    l.addColor("mk/bad_bg", nvgRGB(255, 235, 238));
+    l.addColor("mk/info_bg", nvgRGB(225, 245, 254));
+    l.addColor("mk/neutral_bg", nvgRGBA(0, 0, 0, 12));
+    l.addColor("mk/ok_text", nvgRGB(27, 94, 32));
+    l.addColor("mk/warn_text", nvgRGB(191, 54, 12));
+    l.addColor("mk/bad_text", nvgRGB(183, 28, 28));
+    l.addColor("mk/info_text", nvgRGB(1, 87, 155));
+    // Опасная кнопка: красный фон, белый текст (контраст выше 4.5:1 в обеих темах).
+    d.addColor("mk/danger_bg", nvgRGB(211, 47, 47));
+    d.addColor("mk/danger_text", nvgRGB(255, 255, 255));
+    d.addColor("mk/danger_disabled_bg", nvgRGBA(211, 47, 47, 90));
+    l.addColor("mk/danger_bg", nvgRGB(198, 40, 40));
+    l.addColor("mk/danger_text", nvgRGB(255, 255, 255));
+    l.addColor("mk/danger_disabled_bg", nvgRGBA(198, 40, 40, 90));
+}
+
+const brls::ButtonStyle* dangerStyle() {
+    static const brls::ButtonStyle style = {
+        .shadowType = brls::ShadowType::GENERIC,
+        .hideHighlightBackground = true,
+        .highlightPadding = "brls/button/primary_highlight_padding",
+        .borderThickness = "",
+        .enabledBackgroundColor = "mk/danger_bg",
+        .enabledLabelColor = "mk/danger_text",
+        .enabledBorderColor = "",
+        .disabledBackgroundColor = "mk/danger_disabled_bg",
+        .disabledLabelColor = "mk/danger_text",
+        .disabledBorderColor = "",
+    };
+    return &style;
+}
+
+NVGcolor toneText(Tone tone) {
+    switch (tone) {
+        case Tone::Ok: return brls::Application::getTheme()["mk/ok_text"];
+        case Tone::Warn: return brls::Application::getTheme()["mk/warn_text"];
+        case Tone::Bad: return brls::Application::getTheme()["mk/bad_text"];
+        case Tone::Info: return brls::Application::getTheme()["mk/info_text"];
+        default: return colSub();
+    }
+}
+
+NVGcolor toneBg(Tone tone) {
+    switch (tone) {
+        case Tone::Ok: return brls::Application::getTheme()["mk/ok_bg"];
+        case Tone::Warn: return brls::Application::getTheme()["mk/warn_bg"];
+        case Tone::Bad: return brls::Application::getTheme()["mk/bad_bg"];
+        case Tone::Info: return brls::Application::getTheme()["mk/info_bg"];
+        default: return brls::Application::getTheme()["mk/neutral_bg"];
+    }
+}
+
+const char* toneIcon(Tone tone) {
+    switch (tone) {
+        case Tone::Ok: return icon::kOk;
+        case Tone::Warn: return icon::kWarn;
+        case Tone::Bad: return icon::kBad;
+        default: return icon::kInfo;
+    }
+}
+
+namespace {
+constexpr float kSubIcon = 26.0f;     // размер значка
+constexpr float kSubIndent = 38.0f;   // отступ строк под текст заголовка (ширина значка с промежутком)
+}  // namespace
+
+brls::Box* makeSubCard(Tone tone, const std::string& iconGlyph, const std::string& title, float titleSize) {
+    auto* b = makeColumn();
+    b->setBackgroundColor(toneBg(tone));
+    b->setCornerRadius(8);
+    b->setPadding(12, 16, 14, 14);
+    b->setMarginTop(10);
+    if (!title.empty() || !iconGlyph.empty()) {
+        auto* head = makeRow();
+        head->setAlignItems(brls::AlignItems::FLEX_START);
+        auto* ic = makeLabel(iconGlyph, kSubIcon, toneText(tone), true);
+        ic->setWidth(kSubIndent);
+        head->addView(ic);
+        auto* t = makeLabel(title, titleSize, toneText(tone));
+        t->setGrow(1.0f);
+        t->setShrink(1.0f);
+        t->setMarginTop(1);
+        head->addView(t);
+        b->addView(head);
+    }
+    return b;
+}
+
+brls::Label* addSubLine(brls::Box* sub, const std::string& text, NVGcolor color, float size) {
+    auto* l = makeLabel(text, size, color);
+    addSubView(sub, l);
+    return l;
+}
+
+void addSubView(brls::Box* sub, brls::View* view) {
+    view->setMarginLeft(kSubIndent);
+    view->setMarginTop(5);
+    sub->addView(view);
 }
 
 brls::Label* makeLabel(const std::string& text, float size, NVGcolor color, bool singleLine) {

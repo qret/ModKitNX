@@ -15,6 +15,8 @@
 #include <vector>
 
 #include "app_types.hpp"
+#include "game_actions.hpp"
+#include "ui/diag_activity.hpp"
 #include "ui/common.hpp"
 
 namespace mk::ui {
@@ -41,8 +43,13 @@ private:
     void buildSdk(brls::Box* body);
     void buildFixes(brls::Box* body);
     void refreshFixes();
+    void addGaps(const mk::app::FixForecastView& f);   // чего модуль не восполнит в выбранной sdk
     void buildMods(brls::Box* body);
     void buildActions(brls::Box* body);
+    // Кнопки «Подменить sdk» / «Удалить подмену», «Установить» / «Удалить установленное» / «Переустановить»,
+    // «Отчёт отладки», «Собрать логи» — по mk::app::decideGameActions; перестраиваются при выборе sdk, мода и флажка.
+    void refreshActions();
+    mk::app::GameActionsInput actionsInput() const;
     void startOperation(mk::app::OpKind op);
     std::string selectedSdkPath() const;
     std::string selectedModPath() const;
@@ -59,7 +66,10 @@ private:
     bool debug_ = false;   // «Отладочная сборка»: ставить диагностический вариант модуля
     std::vector<ChoiceRow*> sdkRows_;
     std::vector<ChoiceRow*> modRows_;
-    brls::Box* fixesBox_ = nullptr;   // содержимое блока «Что исправит модуль» (перестраивается при выборе sdk)
+    brls::Box* fixesBox_ = nullptr;
+    brls::Box* sdkButtons_ = nullptr;   // «Подменить sdk» / «Удалить подмену» в блоке sdk
+    brls::Box* actionsBox_ = nullptr;   // кнопки действий внизу страницы
+    ReportsInfo reports_;               // отчёты этой игры на карте (findReports, в фоне)   // содержимое блока «Что исправит модуль» (перестраивается при выборе sdk)
     brls::View* firstFocus_ = nullptr;
     brls::Box* anchor_ = nullptr;   // невидимая фокусируемая опора — всегда первый ребёнок body
     std::function<void(const mk::app::GameRow&)> onRowChanged_;

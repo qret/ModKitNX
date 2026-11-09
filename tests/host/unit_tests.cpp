@@ -10,6 +10,7 @@
 #include "mk/sdk_harvest.hpp"
 #include "mk/zbic.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -410,6 +411,50 @@ static void test_forecast_parts() {
     sin.vulkan_module = "subsdk0";
     m = forecast_fixes(sin, s19);
     CHECK(by(m, "nvrm_query").choice == "proxy" && by(m, "nvrm_query").why == "StubVulkan", "прогноз: Vulkan -> графику не трогаем");
+}
+
+// Пробелы sdk (sdk_gaps) на синтетике: MISSING, STUB, каталог, закрытые модулями игры, слабые, нет в своей sdk.
+static void test_sdk_gaps() {
+    const std::string hm = "_ZNSt3__113__hash_memoryEPKvm";   // есть в каталоге (MISSING)
+    std::map<std::string, GameImport> imps = {
+        {"a_missing", {false, {"main"}}},             // в старой нет, в своей настоящая -> MISSING
+        {"b_stub", {false, {"main", "subsdk0"}}},     // в старой заглушка, в своей настоящая -> STUB
+        {"c_both_stub", {false, {"main"}}},           // заглушка и там, и там -> не пробел
+        {"d_real", {false, {"main"}}},                // настоящая в старой -> не пробел
+        {"e_game", {false, {"main"}}},                // закрыт экспортом модуля игры
+        {"f_weak", {true, {"subsdk1"}}},              // слабый импорт, в старой нет
+        {"g_not_sdk", {false, {"main"}}},             // нет и в своей sdk -> не от sdk
+        {hm, {false, {"main"}}},                      // известен каталогу
+    };
+    std::set<std::string> gexp = {"e_game"};
+    std::map<std::string, bool> old_sdk = {{"b_stub", true}, {"c_both_stub", true}, {"d_real", false}};
+    std::map<std::string, bool> own = {{"a_missing", false}, {"b_stub", false}, {"c_both_stub", true}, {"d_real", false},
+                                       {"e_game", false}, {"f_weak", false}, {hm, false}};
+    auto gaps = sdk_gaps(imps, gexp, old_sdk, own);
+    auto find = [&](const std::string& s) -> const SdkGap* {
+        for (auto& g : gaps)
+            if (g.symbol == s) return &g;
+        return nullptr;
+    };
+    CHECK(gaps.size() == 4, "пробелы sdk: ровно четыре (a, b, f, hash)");
+    CHECK(find("a_missing") && find("a_missing")->kind == "MISSING" && !find("a_missing")->weak && !find("a_missing")->fix,
+          "пробелы sdk: нет в старой -> MISSING, не в каталоге");
+    CHECK(find("b_stub") && find("b_stub")->kind == "STUB" && find("b_stub")->importers.size() == 2,
+          "пробелы sdk: заглушка против настоящей -> STUB, оба модуля");
+    CHECK(!find("c_both_stub") && !find("d_real"), "пробелы sdk: заглушка в обеих и настоящая в старой — не пробел");
+    CHECK(!find("e_game"), "пробелы sdk: закрытый модулем игры исключён");
+    CHECK(find("f_weak") && find("f_weak")->weak, "пробелы sdk: слабый импорт помечен");
+    CHECK(!find("g_not_sdk"), "пробелы sdk: нет в своей sdk — не пробел sdk");
+    CHECK(find(hm) && find(hm)->fix && find(hm)->fix->id == "hash_memory", "пробелы sdk: символ каталога помечен записью");
+    int unfixed = 0;
+    for (auto& g : gaps)
+        if (!g.fix) ++unfixed;
+    CHECK(unfixed == 3, "пробелы sdk: без каталога — три (известные исключены)");
+    CHECK(std::is_sorted(gaps.begin(), gaps.end(), [](const SdkGap& x, const SdkGap& y) { return x.symbol < y.symbol; }),
+          "пробелы sdk: порядок по имени");
+    CHECK(sdk_gaps(imps, gexp, own, own).empty(), "пробелы sdk: своя sdk против себя — пусто");
+    GameImport two;   // по умолчанию слабый, пока не встретился сильный
+    CHECK(two.weak && two.importers.empty(), "пробелы sdk: GameImport по умолчанию слабый и пустой");
 }
 
 static void test_executor() {
@@ -1017,6 +1062,7 @@ int main() {
     test_names_versions();
     test_rules();
     test_forecast_parts();
+    test_sdk_gaps();
     test_executor();
     test_own_no_bak();
     test_logs();

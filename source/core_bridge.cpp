@@ -179,10 +179,17 @@ bool inspectGame(const GameCtx& g, app::GameDetails& d) {
         d.ourInstalled = st.receipt.sane();
         if (d.ourInstalled) {
             const auto& r = st.receipt.data;
-            d.slot = r.value("slot", "");
-            d.installedAt = r.value("installed", "");
-            d.installedBy = r.value("installed_by", "");
+            // Поле может быть null (квитанция одной подмены sdk: слота модуля нет) — value() бросил бы исключение.
+            auto str = [&r](const char* k) { return r.contains(k) && r[k].is_string() ? r[k].get<std::string>() : std::string(); };
+            d.slot = str("slot");
+            d.installedAt = str("installed");
+            d.installedBy = str("installed_by");
             d.sdk.swapOurs = r.contains("sdk_swap") && !r["sdk_swap"].is_null();
+            if (d.sdk.swapOurs && r["sdk_swap"].is_object() && r["sdk_swap"].contains("sha256") &&
+                r["sdk_swap"]["sha256"].is_string())
+                d.installedSdkSha = r["sdk_swap"]["sha256"].get<std::string>();
+            if (r.contains("mod") && r["mod"].is_object() && r["mod"].contains("source") && r["mod"]["source"].is_string())
+                d.installedModPath = r["mod"]["source"].get<std::string>();
             // Вид сборки: по квитанции (поля формата 1 diag, diag_gfx, module_variant; в прежних — только diag).
             auto flag = [&r](const char* k) { return r.contains(k) && r[k].is_boolean() && r[k].get<bool>(); };
             d.moduleVariant = r.contains("module_variant") && r["module_variant"].is_string()
@@ -255,6 +262,7 @@ void forecastFixes(const GameCtx& g, const std::string& currentSdkPath, bool cur
     try {
         game = mk::forecast_game(e, exefsRoot());
         app::fillFixesGame(b, game);
+        if (!game.own_sdk_ok) MK_LOG("bridge: sdk gaps: own sdk not read (%s) - not checked", game.own_sdk_error.c_str());
     } catch (const mk::Error& ex) {
         b.error = errorText(ex);
         MK_LOG("bridge: forecast_game %s: %s", ex.code().c_str(), ex.what());
@@ -278,6 +286,13 @@ void forecastFixes(const GameCtx& g, const std::string& currentSdkPath, bool cur
                 }
             }
             v = app::fixesView(game, s);
+            // Полный список пробелов — в журнал приложения (для разработчика: что добавить в каталог).
+            if (!v.gaps.empty()) MK_LOG("bridge: sdk gaps %s: %zu not covered by the module", path.c_str(), v.gaps.size());
+            for (const auto& gp : v.gaps) {
+                std::string who;
+                for (const auto& m : gp.importers) who += (who.empty() ? "" : ",") + m;
+                MK_LOG("bridge:   %s %s%s [%s]", gp.kind.c_str(), gp.symbol.c_str(), gp.weak ? " (weak)" : "", who.c_str());
+            }
         } catch (const mk::Error& ex) {
             v.error = errorText(ex);
             MK_LOG("bridge: forecast_sdk %s: %s %s", path.c_str(), ex.code().c_str(), ex.what());

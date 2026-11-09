@@ -53,7 +53,18 @@ void OperationActivity::onContentAvailable() {
     showPlanning();
 }
 
+// Тело экрана — невидимая опора фокуса, пока на экране нечего выбирать (план составляется, идёт запись):
+// иначе фокус падает на рамку прокрутки — пустая рамка «кнопки без текста», по которой ходит курсор. B ловит
+// обработчик тела. Перед очисткой фокус переводится на тело — удаляемая кнопка не остаётся в фокусе.
+void OperationActivity::holdFocusOnBody() {
+    body->setFocusable(true);
+    body->setHideHighlight(true);
+    body->setHideClickAnimation(true);
+    brls::Application::giveFocus(body);
+}
+
 void OperationActivity::showPlanning() {
+    holdFocusOnBody();
     body->clearViews();
     body->addView(makeLabel(tr("op/planning"), 24, colSub()));
     AliveToken alive = alive_;
@@ -74,12 +85,14 @@ std::string OperationActivity::errorText() const {
 }
 
 void OperationActivity::showPlan() {
+    holdFocusOnBody();
     body->clearViews();
+    body->setFocusable(false);
     if (!plan_.ok) {
-        body->addView(makeLabel(tr("op/plan_failed"), 26, colBad()));
-        auto* e = makeLabel(errorText(), 20, colText());
-        e->setMarginTop(10);
-        body->addView(e);
+        auto* fail = makeSubCard(Tone::Bad, icon::kBad, tr("op/plan_failed"), 24);
+        fail->setMarginTop(0);
+        addSubLine(fail, errorText(), colText(), 20);
+        body->addView(fail);
         auto* back = makeButton(tr("common/back"), &brls::BUTTONSTYLE_BORDERED, [this] { finish(); });
         back->setMarginTop(24);
         body->addView(back);
@@ -106,15 +119,20 @@ void OperationActivity::showPlan() {
     if (plan_.items.empty()) card->addView(makeLabel(tr("op/nothing"), 20, colSub()));
     body->addView(card);
 
-    for (const auto& w : plan_.warnings) body->addView(makeLabel("! " + trText(w), 19, colWarn()));
-    if (isRemoval(op_)) body->addView(makeLabel(tr("op/removal_note"), 18, colSub()));
-    if (debug_) body->addView(makeLabel(tr("debug/plan_note"), 19, colInfo()));
+    // Предупреждения, пояснение к удалению и отладочная сборка — подкарточками по тону.
+    if (!plan_.warnings.empty()) {
+        auto* w = makeSubCard(Tone::Warn, icon::kWarn, tr("common/attention"));
+        for (const auto& it : plan_.warnings) addSubLine(w, trText(it), colText(), 19);
+        body->addView(w);
+    }
+    if (isRemoval(op_)) body->addView(makeSubCard(Tone::Neutral, icon::kInfo, tr("op/removal_note"), 18));
+    if (debug_) body->addView(makeSubCard(Tone::Info, icon::kInfo, tr("debug/plan_note"), 19));
 
     auto* buttons = makeRow();
     buttons->setMarginTop(22);
     buttons->setMarginBottom(30);
     auto* go = makeButton(tr("op/" + std::string(opKey(op_)) + "/confirm_btn"),
-                          isRemoval(op_) ? &brls::BUTTONSTYLE_HIGHLIGHT : &brls::BUTTONSTYLE_PRIMARY,
+                          isRemoval(op_) ? dangerStyle() : &brls::BUTTONSTYLE_PRIMARY,
                           [this] { confirmThenRun(); });
     buttons->addView(go);
     buttons->addView(makeButton(tr("common/back"), &brls::BUTTONSTYLE_BORDERED, [this] { finish(); }));
@@ -139,6 +157,7 @@ void OperationActivity::confirmThenRun() {
 
 void OperationActivity::run() {
     running_ = true;
+    holdFocusOnBody();
     body->clearViews();
     body->addView(makeLabel(tr("op/" + std::string(opKey(op_)) + "/running"), 28, colText()));
     stepLabel_ = makeLabel(tr("op/starting"), 21, colText());
@@ -153,11 +172,6 @@ void OperationActivity::run() {
     auto* warn = makeLabel(tr("op/do_not_power_off"), 19, colWarn());
     warn->setMarginTop(24);
     body->addView(warn);
-    // Фокус — на тело, чтобы B доходил до нашего обработчика. Рамку выделения не рисуем: тело — не кнопка,
-    // иначе весь экран прогресса обведён рамкой «выбрано» от края до края.
-    body->setFocusable(true);
-    body->setHideHighlight(true);
-    brls::Application::giveFocus(body);
 
     AliveToken alive = alive_;
     brls::async([this, alive]() {
@@ -195,6 +209,7 @@ void OperationActivity::run() {
 }
 
 void OperationActivity::showResult() {
+    holdFocusOnBody();
     body->clearViews();
     body->setFocusable(false);
     stepLabel_ = nullptr;
@@ -202,24 +217,38 @@ void OperationActivity::showResult() {
     bar_ = nullptr;
     const bool ok = result_.ok;
     body->addView(makeLabel(tr(ok ? "op/result_ok" : "op/result_fail"), 34, ok ? colOk() : colBad()));
-    if (!ok) {
-        auto* e = makeLabel(result_.error.empty() ? tr("error/unknown") : trText(result_.error), 20, colText());
-        e->setMarginTop(10);
-        body->addView(e);
+    // Итог по смыслу: ошибка — красная подкарточка, сделанное — зелёная (пропущенное — серым в ней же),
+    // проблемы — жёлтая, что дальше — синяя; пути квитанции и журнала — мелко внизу.
+    if (!ok) body->addView(makeSubCard(Tone::Bad, icon::kBad,
+                                       result_.error.empty() ? tr("error/unknown") : trText(result_.error), 20));
+    if (!result_.done.empty() || !result_.skipped.empty()) {
+        auto* done = makeSubCard(result_.done.empty() ? Tone::Neutral : Tone::Ok,
+                                 result_.done.empty() ? icon::kInfo : icon::kOk, tr("op/done_list"), 20);
+        for (const auto& s : result_.done) addSubLine(done, "• " + trText(s), colText(), 18);
+        for (const auto& s : result_.skipped) addSubLine(done, "— " + trText(s), colSub(), 18);
+        body->addView(done);
     }
-    if (!result_.done.empty() || !result_.skipped.empty() || !result_.problems.empty()) {
-        auto* card = makeCard();
-        card->setMarginTop(14);
-        card->addView(makeLabel(tr("op/done_list"), 20, colSub()));
-        for (const auto& s : result_.done) card->addView(makeLabel("• " + trText(s), 18, colText()));
-        for (const auto& s : result_.skipped) card->addView(makeLabel("— " + trText(s), 18, colSub()));
-        for (const auto& s : result_.problems) card->addView(makeLabel("! " + trText(s), 18, colWarn()));
-        body->addView(card);
+    if (!result_.problems.empty()) {
+        auto* pr = makeSubCard(Tone::Warn, icon::kWarn, tr("op/problems_title"), 20);
+        for (const auto& s : result_.problems) addSubLine(pr, trText(s), colText(), 18);
+        body->addView(pr);
     }
-    if (ok && !isRemoval(op_)) body->addView(makeLabel(tr("op/next_launch"), 19, colInfo()));
-    if (ok && debug_) body->addView(makeLabel(tr("debug/after_install"), 19, colInfo()));
-    if (!result_.receiptPath.empty()) body->addView(makeLabel(trf("op/receipt", result_.receiptPath), 16, colSub()));
-    if (!result_.logPath.empty()) body->addView(makeLabel(trf("op/log", result_.logPath), 16, colSub()));
+    if (ok && (!isRemoval(op_) || debug_)) {
+        brls::Box* next = nullptr;
+        if (!isRemoval(op_)) next = makeSubCard(Tone::Info, icon::kInfo, tr("op/next_launch"), 19);
+        if (debug_) {
+            if (next) addSubLine(next, tr("debug/after_install"), colText(), 18);
+            else next = makeSubCard(Tone::Info, icon::kInfo, tr("debug/after_install"), 19);
+        }
+        body->addView(next);
+    }
+    auto addPath = [this](const std::string& text) {
+        auto* l = makeLabel(text, 16, colSub());
+        l->setMarginTop(6);
+        body->addView(l);
+    };
+    if (!result_.receiptPath.empty()) addPath(trf("op/receipt", result_.receiptPath));
+    if (!result_.logPath.empty()) addPath(trf("op/log", result_.logPath));
 
     auto* done = makeButton(tr("op/done_btn"), &brls::BUTTONSTYLE_PRIMARY, [this] { finish(); });
     done->setMarginTop(24);

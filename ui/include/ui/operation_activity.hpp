@@ -23,6 +23,7 @@ public:
     void onContentAvailable() override;
 
 private:
+    void holdFocusOnBody();
     void showPlanning();
     void showPlan();
     void confirmThenRun();

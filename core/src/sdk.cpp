@@ -54,6 +54,25 @@ bool body_is_stub(const NsoImage& n, uint64_t addr) {
     return is_return_const_stub(rd32(b.data()), rd32(b.data() + 4));
 }
 
+// Импорты модуля игры в общую таблицу (слабый — только если слабый во всех модулях) и его экспорты.
+void add_module_symbols(const NsoImage& g, const std::string& nm, std::map<std::string, GameImport>& imps,
+                        std::set<std::string>& exports) {
+    for (auto& [s, info] : g.imports()) {
+        GameImport& gi = imps[s];
+        if ((info.info >> 4) != 2) gi.weak = false;   // STB_WEAK = 2
+        gi.importers.push_back(nm);
+    }
+    for (auto& [s, v] : g.exports()) exports.insert(s);
+}
+
+// Экспорты sdk -> тело — заглушка; only — только эти символы (nullptr — все).
+std::map<std::string, bool> export_stubs(const NsoImage& n, const std::map<std::string, GameImport>* only = nullptr) {
+    std::map<std::string, bool> m;
+    for (auto& [s, sym] : n.exports())
+        if (!only || only->count(s)) m.emplace(s, body_is_stub(n, sym.value));
+    return m;
+}
+
 bool is_zbic_file(IFileSystem& fs, const std::string& p) {
     if (!fs.is_file(p)) return false;
     Bytes h = fs.read_range(p, 0, 0x10);
@@ -252,6 +271,7 @@ ForecastGame forecast_game(Env& env, const std::string& exefs) {
     std::set<std::string> cat;
     for (auto& c : autofix_catalog()) cat.insert(c.symbol);
     ForecastGame g;
+    std::set<std::string> exports;
     for (auto& [nm, p] : game_files(env.fs, exefs)) {
         NsoImage n = load(env, p);
         auto v = n.mw_version();
@@ -261,6 +281,24 @@ ForecastGame forecast_game(Env& env, const std::string& exefs) {
         if (ex.count("eglCreateWindowSurface")) g.opengl = true;
         for (auto& [s, info] : n.imports())
             if (cat.count(s)) g.imports[s].push_back(nm);
+        add_module_symbols(n, nm, g.all_imports, exports);
+    }
+    for (auto& [s, gi] : g.all_imports)
+        if (exports.count(s)) g.module_exports.insert(s);
+    // Своя sdk игры — эталон «настоящих» функций для пробелов; не прочиталась — прогноз каталога всё равно считается.
+    const std::string sp = path_join(exefs, "sdk");
+    try {
+        if (!env.fs.is_file(sp)) {
+            g.own_sdk_error = "SDK_ABSENT";
+        } else {
+            NsoImage s = load(env, sp);
+            g.own_sdk = export_stubs(s, &g.all_imports);
+            g.own_sdk_ok = true;
+        }
+    } catch (const Error& e) {
+        g.own_sdk_error = e.code();
+    } catch (const std::exception&) {
+        g.own_sdk_error = "SDK_UNREADABLE";
     }
     return g;
 }
@@ -271,12 +309,32 @@ ForecastSdk forecast_sdk(Env& env, const std::string& sdk_path) {
     s.name = sdk.module_name();
     s.known = s.name && *s.name == kSdkName;
     s.version = sdk.mw_version();
-    auto ex = sdk.exports();
-    for (auto& fix : autofix_catalog()) {
-        auto it = ex.find(fix.symbol);
-        if (it != ex.end()) s.exports[fix.symbol] = body_is_stub(sdk, it->second.value);
-    }
+    s.exports = export_stubs(sdk);
     return s;
+}
+
+std::vector<SdkGap> sdk_gaps(const std::map<std::string, GameImport>& imports, const std::set<std::string>& game_exports,
+                             const std::map<std::string, bool>& old_sdk, const std::map<std::string, bool>& own_sdk) {
+    std::map<std::string, const AutofixFix*> known;
+    for (auto& c : autofix_catalog()) known[c.symbol] = &c;
+    std::vector<SdkGap> out;
+    for (auto& [sym, gi] : imports) {
+        if (game_exports.count(sym)) continue;
+        auto ni = own_sdk.find(sym);
+        if (ni == own_sdk.end()) continue;
+        auto oi = old_sdk.find(sym);
+        SdkGap g;
+        if (oi == old_sdk.end()) g.kind = "MISSING";
+        else if (oi->second && !ni->second) g.kind = "STUB";
+        else continue;
+        g.symbol = sym;
+        g.weak = gi.weak;
+        g.importers = gi.importers;
+        auto c = known.find(sym);
+        if (c != known.end()) g.fix = c->second;
+        out.push_back(std::move(g));
+    }
+    return out;
 }
 
 ModuleForecast forecast_fixes(const ForecastGame& game, const ForecastSdk& sdk) {
@@ -319,37 +377,15 @@ oj sdk_forecast(Env& env, const std::string& console_sdk, const std::string& exe
 }
 
 oj sdk_detect(Env& env, const std::string& old_sdk, const std::string& new_sdk, const std::string& exefs) {
-    std::map<std::string, const AutofixFix*> known;
-    for (auto& c : autofix_catalog()) known[c.symbol] = &c;
     NsoImage o = load(env, old_sdk), n = load(env, new_sdk);
-    auto oex = o.exports(), nex = n.exports();
-    std::map<std::string, std::pair<int, std::vector<std::string>>> imps;
+    std::map<std::string, GameImport> imps;
     std::set<std::string> exports;
-    for (auto& [nm, p] : game_files(env.fs, exefs)) {
-        NsoImage g = load(env, p);
-        for (auto& [s, info] : g.imports()) {
-            int bind = info.info >> 4;
-            auto it = imps.find(s);
-            std::vector<std::string> who = it != imps.end() ? it->second.second : std::vector<std::string>{};
-            who.push_back(nm);
-            int b = ((it != imps.end() && it->second.first == 1) || bind != 2) ? 1 : 2;
-            imps[s] = {b, who};
-        }
-        for (auto& [s, v] : g.exports()) exports.insert(s);
-    }
+    for (auto& [nm, p] : game_files(env.fs, exefs)) add_module_symbols(load(env, p), nm, imps, exports);
     oj found = oj::array(), kn = oj::array(), nu = oj::array();
-    for (auto& [sym, bw] : imps) {
-        if (exports.count(sym)) continue;
-        auto oi = oex.find(sym), ni = nex.find(sym);
-        if (ni == nex.end()) continue;
-        std::string kind;
-        if (oi == oex.end()) kind = "MISSING";
-        else if (body_is_stub(o, oi->second.value) && !body_is_stub(n, ni->second.value)) kind = "STUB";
-        else continue;
-        auto c = known.find(sym);
-        bool k = c != known.end();
-        oj f = {{"symbol", sym}, {"kind", kind}, {"weak", bw.first == 2}, {"importers", bw.second}, {"known", k},
-                {"fix", k ? oj(c->second->id) : oj(nullptr)}, {"catalog_kind", k ? oj(c->second->kind) : oj(nullptr)}};
+    for (auto& g : sdk_gaps(imps, exports, export_stubs(o, &imps), export_stubs(n, &imps))) {
+        bool k = g.fix != nullptr;
+        oj f = {{"symbol", g.symbol}, {"kind", g.kind}, {"weak", g.weak}, {"importers", g.importers}, {"known", k},
+                {"fix", k ? oj(g.fix->id) : oj(nullptr)}, {"catalog_kind", k ? oj(g.fix->kind) : oj(nullptr)}};
         found.push_back(f);
         (k ? kn : nu).push_back(f);
     }

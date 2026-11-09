@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// ModKitNX — перевод прогноза ядра (mk::forecast_fixes) в вид для экрана «Что исправит модуль».
+// ModKitNX — перевод прогноза ядра (mk::forecast_fixes, mk::sdk_gaps) в вид для экрана «Что исправит модуль».
 // Одно место и для моста (source/core_bridge.cpp), и для предпросмотра (preview/mock_platform.cpp).
 #pragma once
 
@@ -30,6 +30,12 @@ inline FixForecastView fixesView(const mk::ForecastGame& game, const mk::Forecas
         l.own = f.fix.own;
         v.fixes.push_back(std::move(l));
     }
+    // Пробелы sdk, которые модуль не восполнит: только то, чего нет в каталоге.
+    if (game.own_sdk_ok)
+        for (const auto& g : mk::sdk_gaps(game.all_imports, game.module_exports, sdk.exports, game.own_sdk)) {
+            if (g.fix) continue;
+            v.gaps.push_back(GapLine{g.symbol, g.kind, g.weak, g.importers});
+        }
     return v;
 }
 
@@ -39,6 +45,8 @@ inline void fillFixesGame(FixesBlock& b, const mk::ForecastGame& game) {
     b.vulkan = game.vulkan;
     b.vulkanModule = game.vulkan_module;
     b.opengl = game.opengl;
+    b.ownSdkOk = game.own_sdk_ok;
+    b.ownSdkError = game.own_sdk_error;
 }
 
 }  // namespace mk::app

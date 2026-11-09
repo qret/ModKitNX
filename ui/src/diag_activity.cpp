@@ -78,6 +78,12 @@ void addRaw(brls::Box* parent, const std::string& name, const std::string& text)
     parent->addView(card);
 }
 
+// Старый отчёт (корень карты) от этой игры: первая строка нового вида с её TitleID или TitleID в тексте.
+bool legacyIsFor(const std::string& text, const std::string& tid) {
+    const mk::logs::ReportHead head = mk::logs::parse_report_head(text);
+    return (head.ok && head.tid.find(tid) != std::string::npos) || mk::logs::legacy_report_mentions(text, tid);
+}
+
 std::vector<mk::logs::ReportFile> reportsOf(const std::string& tid, const char* kind) {
     try {
         return mk::logs::list_reports(mk::plat::posixFs(), mk::plat::paths::kLogsDir, tid, kind);
@@ -88,10 +94,47 @@ std::vector<mk::logs::ReportFile> reportsOf(const std::string& tid, const char* 
 
 }  // namespace
 
-bool diagReportsPresent(const std::string& tid) {
-    struct stat st;
-    if (!tid.empty() && (!reportsOf(tid, "diag").empty() || !reportsOf(tid, "gfx").empty())) return true;
-    return ::stat(pd::kDiagPath, &st) == 0 || ::stat(pd::kGfxPath, &st) == 0;
+ReportsInfo findReports(const std::string& tid) {
+    ReportsInfo r;
+    if (tid.empty()) return r;
+    std::optional<int64_t> last;
+    for (const char* kind : {"diag", "gfx"}) {
+        const auto files = reportsOf(tid, kind);
+        if (files.empty()) continue;
+        r.diag = true;
+        const auto t = mk::plat::fileMtime(files.front().path);   // первый — последний по номеру
+        if (t && (!last || *t > *last)) last = t;
+    }
+    if (!r.diag) {
+        // Старый отчёт в корне карты — только если он от этой игры.
+        for (const char* p : {pd::kDiagPath, pd::kGfxPath}) {
+            std::string text;
+            if (!pd::readText(p, text, 64 * 1024)) continue;
+            if (legacyIsFor(text, tid)) {
+                r.diag = true;
+                const auto t = mk::plat::fileMtime(p);
+                if (t && (!last || *t > *last)) last = t;
+            }
+        }
+    }
+    if (last) {
+        const time_t tt = static_cast<time_t>(*last);
+        struct tm tmv;
+        gmtime_r(&tt, &tmv);
+        char buf[32];
+        std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M", &tmv);
+        r.lastWhen = buf;
+    }
+    // Отчёт Atmosphère о падении: только список имён (<время>_<TID>.log), файлы не читаются.
+    try {
+        for (const auto& e : mk::plat::posixFs().list_dir(mk::plat::paths::kCrashReportsDir))
+            if (!e.is_dir && mk::logs::crash_tid_from_name(e.name) == tid) {
+                r.crash = true;
+                break;
+            }
+    } catch (const mk::Error&) {
+    }
+    return r;
 }
 
 DiagActivity::DiagActivity(std::string gameTid) : tid_(std::move(gameTid)) {}
@@ -119,6 +162,7 @@ void DiagActivity::addPicker(brls::Box* parent, const char* titleKey, const std:
         const std::string when = fileTime(files[i].path);
         auto* r = new ChoiceRow(files[i].name, when, i == 0 ? tr("diag/latest") : "");
         r->setChecked(static_cast<int>(i) == sel);
+        if (static_cast<int>(i) == sel && !pickFocus_) pickFocus_ = r;
         const int idx = static_cast<int>(i);
         int* target = &sel;
         r->onPick([this, target, idx] {
@@ -130,7 +174,14 @@ void DiagActivity::addPicker(brls::Box* parent, const char* titleKey, const std:
 }
 
 void DiagActivity::load() {
+    // Выбор отчёта перестраивает экран, а фокус стоит на строке выбора: сначала фокус — на само тело (без рамки),
+    // потом очистка; иначе указатель фокуса остался бы на удалённой строке.
+    body->setFocusable(true);
+    body->setHideHighlight(true);
+    brls::Application::giveFocus(body);
     body->clearViews();
+    body->setFocusable(false);
+    pickFocus_ = nullptr;
     const auto diags = reportsOf(tid_, "diag");
     const auto gfxs = reportsOf(tid_, "gfx");
     if (selDiag_ >= static_cast<int>(diags.size())) selDiag_ = 0;
@@ -150,33 +201,42 @@ void DiagActivity::load() {
         gfxName = "nxredirect-gfx.txt";
     }
     std::string diagText, gfxText;
-    const bool haveDiag = !diagPath.empty() && pd::readText(diagPath.c_str(), diagText);
-    const bool haveGfx = !gfxPath.empty() && pd::readText(gfxPath.c_str(), gfxText);
+    bool haveDiag = !diagPath.empty() && pd::readText(diagPath.c_str(), diagText);
+    bool haveGfx = !gfxPath.empty() && pd::readText(gfxPath.c_str(), gfxText);
+    // Старый отчёт из корня карты — только если он от этой игры (как кнопка на странице игры, findReports).
+    if (legacy && !tid_.empty()) {
+        if (haveDiag && !legacyIsFor(diagText, tid_)) haveDiag = false;
+        if (haveGfx && !legacyIsFor(gfxText, tid_)) haveGfx = false;
+    }
 
     body->addView(makeLabel(tr("diag/lead"), 18, colSub()));
     const std::string dir = mk::plat::paths::kLogsDir + tid_ + "/";
     body->addView(makeLabel(trf("diag/folder", dir), 16, colSub(), true));
     if (!haveDiag && !haveGfx) {
-        auto* none = makeLabel(trf("diag/none_dir", dir), 22, colWarn());
+        auto* none = makeSubCard(Tone::Warn, icon::kWarn, trf("diag/none_dir", dir), 21);
         none->setMarginTop(16);
         body->addView(none);
+        addBack();
         return;
     }
-    if (legacy) body->addView(makeLabel(tr("diag/legacy"), 17, colWarn()));
+    if (legacy) body->addView(makeSubCard(Tone::Warn, icon::kWarn, tr("diag/legacy"), 18));
 
     if (haveDiag) {
         const pd::DiagSummary s = pd::parseDiag(diagText);
         auto* card = makeCard();
         card->setMarginTop(12);
         card->addView(makeSectionTitle(trf("diag/diag_title_file", diagName, fileTime(diagPath))));
-        const bool works = s.verdict.key == "diag/v_works";
-        card->addView(makeLabel(verdictText(s.verdict), 23, works ? colOk() : colWarn()));
+        // Вывод — подкарточкой: работает — зелёная, иначе жёлтая; оговорки к отчёту — в ней же.
+        const Tone tone = s.verdict.key == "diag/v_works" ? Tone::Ok : Tone::Warn;
+        auto* verdict = makeSubCard(tone, toneIcon(tone), verdictText(s.verdict), 21);
+        verdict->setMarginTop(4);
         const mk::logs::ReportHead head = mk::logs::parse_report_head(diagText);
         const std::string reportTid = head.ok ? head.tid : s.tid;
         if (s.isReport && !reportTid.empty() && !tid_.empty() && reportTid.find(tid_) == std::string::npos) {
-            card->addView(makeLabel(trf("diag/other_game", reportTid), 18, colWarn()));
+            addSubLine(verdict, trf("diag/other_game", reportTid), colWarn(), 18);
         }
-        if (s.truncated) card->addView(makeLabel(tr("diag/truncated"), 16, colSub()));
+        if (s.truncated) addSubLine(verdict, tr("diag/truncated"), colSub(), 16);
+        card->addView(verdict);
         addPicker(card, "diag/pick_diag", diags, selDiag_);
         auto* stages = makeColumn();
         stages->setMarginTop(12);
@@ -188,7 +248,10 @@ void DiagActivity::load() {
         const pd::GfxSummary g = pd::parseGfx(gfxText);
         auto* card = makeCard();
         card->addView(makeSectionTitle(trf("diag/gfx_title_file", gfxName, fileTime(gfxPath))));
-        card->addView(makeLabel(verdictText(g.verdict), 21, g.suspects.empty() ? colText() : colWarn()));
+        const Tone tone = g.suspects.empty() ? Tone::Neutral : Tone::Warn;
+        auto* verdict = makeSubCard(tone, toneIcon(tone), verdictText(g.verdict), 20);
+        verdict->setMarginTop(4);
+        card->addView(verdict);
         addPicker(card, "diag/pick_gfx", gfxs, selGfx_);
         auto* stages = makeColumn();
         stages->setMarginTop(12);
@@ -198,6 +261,20 @@ void DiagActivity::load() {
     }
     if (haveDiag) addRaw(body, diagName, diagText);
     if (haveGfx) addRaw(body, gfxName, gfxText);
+    // Выбирать нечего (по одному отчёту каждого вида) — кнопка «Назад», чтобы фокус не падал на пустую рамку.
+    if (pickFocus_) brls::Application::giveFocus(pickFocus_);
+    else addBack();
+}
+
+// Настоящая кнопка «Назад» с фокусом: без неё фокус уходит на рамку прокрутки (пустая рамка без текста).
+void DiagActivity::addBack() {
+    auto* back = makeButton(tr("common/back"), &brls::BUTTONSTYLE_BORDERED,
+                            [] { brls::Application::popActivity(brls::TransitionAnimation::FADE); });
+    back->setId("diag_back");
+    back->setMarginTop(8);
+    back->setMarginBottom(30);
+    body->addView(back);
+    brls::Application::giveFocus(back);
 }
 
 }  // namespace mk::ui

@@ -40,16 +40,14 @@ brls::Box* offerContent(const up::Release& r) {
     auto* cur = makeLabel(trkf("update/current", MK_APP_VERSION), 18, colSub());
     cur->setMarginTop(6);
     box->addView(cur);
-    auto* head = makeLabel(trk("update/whats_new"), 20, colText());
-    head->setMarginTop(18);
-    head->setMarginBottom(6);
-    box->addView(head);
+    // «Что нового» — нейтральной подкарточкой; ставить некуда — жёлтой.
+    auto* news = makeSubCard(Tone::Neutral, icon::kInfo, trk("update/whats_new"), 20);
+    news->setMarginTop(16);
     const std::string notes = up::notesForDisplay(r.body, 520, 9);
-    box->addView(makeLabel(notes.empty() ? trk("update/no_notes") : notes, 17, colSub()));
+    addSubLine(news, notes.empty() ? trk("update/no_notes") : notes, colText(), 17);
+    box->addView(news);
     if (up::selfPath().empty()) {
-        auto* manual = makeLabel(trkf("update/no_self_path", up::assetName(), releasesUrl()), 17, colWarn());
-        manual->setMarginTop(14);
-        box->addView(manual);
+        box->addView(makeSubCard(Tone::Warn, icon::kWarn, trkf("update/no_self_path", up::assetName(), releasesUrl()), 17));
     }
     return box;
 }

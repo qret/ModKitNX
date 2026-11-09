@@ -18,7 +18,7 @@
 | `plan.hpp` | `Plan`/`Action` и исполнитель `apply_plan` (+ прогресс `ProgressFn`; учёт своего как `Ledger` эталона; гейты после записи) |
 | `receipt.hpp` | квитанция `nxredirect.json`: формат 1 эталона 1:1 (вплоть до `sdk_swap`, `diag`, `diag_gfx`, `module_variant`, `owned`, `own_backups`, `foreign_backups`, `created_dirs`) + `installed_by` в конце |
 | `logs.hpp` | логи по играм: отчёты модуля `logs/<TID>/diag-NNNN.txt`/`gfx-NNNN.txt` (`list_reports`, первая строка `parse_report_head`), последний отчёт Atmosphère о падении (`pick_last_crash`: по дате изменения, при равенстве или без даты — по числу в начале имени; TitleID — из имени, иначе из текста), «Собрать логи для отправки» (`plan_logs_bundle` / `write_logs_bundle`: папка `<Игра> v<версия>/` и zip без сжатия, `zip_store`) |
-| `sdk.hpp` | `identify_sdk`, `scan_sdk` (два места, без повторов), `sdk_profile/forecast/detect`, прогноз по частям `forecast_game` × `forecast_sdk` → `forecast_fixes` (экран «Что исправит модуль»; тот же `decide`, `sdk_forecast` считается через них), `evaluate_sdk_status`, `plan_swap_sdk/plan_unswap_sdk` |
+| `sdk.hpp` | `identify_sdk`, `scan_sdk` (два места, без повторов), `sdk_profile/forecast/detect`, прогноз по частям `forecast_game` × `forecast_sdk` → `forecast_fixes` (экран «Что исправит модуль»; тот же `decide`, `sdk_forecast` считается через них), `evaluate_sdk_status`, `plan_swap_sdk/plan_unswap_sdk`; чего модуль не восполнит в выбранной sdk — `sdk_gaps` (MISSING / STUB, без функций каталога, слабые импорты отдельно; на нём же `sdk_detect`) |
 | `sdk_harvest.hpp` | «Найти sdk в других играх» (`mk::harvest`): sdk одной игры (`probe_sdk_file`), кэш проверенных игр `cache/sdk-scan.json` (`load_cache`/`save_cache`, `cache_hit` по признаку содержимого игры — изменилась игра, проверяется снова), выбор кандидатов для прошивки (`select_candidates`: рекомендованная по таблице ядра первой, затем ближайшие; одинаковые — одной строкой; есть sdk с мажором прошивки — младшие не показываются), имя папки `nnSdk <версия> (<игра>)` (`folder_name`), сохранение `sdk` + `source.json` через `.part` (`save_candidate`, sha256 сверяется с найденным) и подпись «из игры …» (`read_source`). Ничего не скачивается |
 | `nacp.hpp` | `parse_nacp` (+ сжатая таблица SDK 20+), `nca_sdk_addon_version`, `safe_folder_name` |
 
@@ -51,8 +51,8 @@ sha256. Чужой файл, как и прежде, сначала копиру
 - nlohmann/json 3.11.3 (MIT): `nlohmann/json.hpp`.
 
 Каталог автоисправления `src/nxr_autofix_catalog.h` — копия файла модуля
-(`nxredirect/src/nxr_autofix_catalog.h` этого репо, GPL-2.0, участники nxredirect); хост-тест сверяет копию с оригиналом (одно отличие — личный путь в комментарии
-заменён нейтральным текстом).
+(`nxredirect/src/nxr_autofix_catalog.h` этого репо, GPL-2.0, участники nxredirect); лицензия файла — GPL-2.0-or-later; сверка `compare_pc.py` требует, чтобы копия ядра побайтно
+совпадала с копией модуля, а записи `NXR_FIX` — с эталоном.
 
 ## Сборка и проверка на ПК
 

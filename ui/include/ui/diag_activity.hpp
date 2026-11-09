@@ -26,15 +26,23 @@ public:
 
 private:
     void load();
+    void addBack();
     void addPicker(brls::Box* parent, const char* titleKey, const std::vector<mk::logs::ReportFile>& files, int& sel);
 
     BRLS_BIND(brls::Box, body, "body");
     std::string tid_;
     int selDiag_ = 0, selGfx_ = 0;   // 0 — последний по номеру
+    brls::View* pickFocus_ = nullptr;   // строка выбранного отчёта — на неё фокус после перестройки
     AliveToken alive_ = makeAlive();
 };
 
-// Есть ли на карте отчёт отладки этой игры (или старый в корне карты) — для показа кнопки.
-bool diagReportsPresent(const std::string& tid);
+// Что есть на карте для этой игры — для кнопок страницы игры. Дёшево: списки файлов; старый отчёт из корня карты
+// читается (он маленький) и засчитывается, только если он от этой игры. Звать в фоне (brls::async).
+struct ReportsInfo {
+    bool diag = false;        // отчёт отладки модуля (diag-*/gfx-* в папке игры или старый корневой этой игры)
+    std::string lastWhen;     // время последнего отчёта «ГГГГ-ММ-ДД ЧЧ:ММ»; "" — не известно
+    bool crash = false;       // отчёт Atmosphère о падении этой игры (по имени файла, как mk::logs)
+};
+ReportsInfo findReports(const std::string& tid);
 
 }  // namespace mk::ui

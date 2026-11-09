@@ -9,7 +9,9 @@
 #include "mk/plan.hpp"
 
 #include <nlohmann/json.hpp>
+#include <map>
 #include <optional>
+#include <set>
 
 namespace mk {
 
@@ -57,6 +59,27 @@ bool is_return_const_stub(uint32_t i0, uint32_t i1);
 nlohmann::ordered_json sdk_profile(Env& env, const std::string& exefs, const std::string* cnmt);
 // Прогноз: что выберет модуль на консоли с этой sdk (own/proxy и почему).
 nlohmann::ordered_json sdk_forecast(Env& env, const std::string& console_sdk, const std::string& exefs);
+// Импорт игры: модули, которые его импортируют (порядок main, subsdk0…); weak — слабый во всех этих модулях
+// (rtld оставит на его месте ноль, а игра со слабой ссылкой обычно сама проверяет, есть ли функция).
+struct GameImport {
+    bool weak = true;
+    std::vector<std::string> importers;
+};
+// Пробел sdk: нужная игре функция, которой в sdk нет (MISSING) или там заглушка «вернуть константу», а в своей
+// sdk игры — настоящая (STUB).
+struct SdkGap {
+    std::string symbol, kind;             // kind: MISSING | STUB
+    bool weak = false;
+    std::vector<std::string> importers;
+    const AutofixFix* fix = nullptr;      // запись каталога; nullptr — модуль эту функцию восполнять не умеет
+};
+// Чистая функция пробелов (без ввода-вывода). imports — импорты модулей игры; game_exports — экспорты модулей игры
+// (закрывают импорт, sdk для него не нужна); old_sdk и own_sdk — символ -> тело — заглушка, для проверяемой sdk и
+// своей sdk игры (достаточно нужных игре символов). Символ, которого нет и в своей sdk игры, пропускается (его даёт
+// не sdk). Порядок — по имени символа. Ей пользуются и sdk_detect, и экран игры.
+std::vector<SdkGap> sdk_gaps(const std::map<std::string, GameImport>& imports, const std::set<std::string>& game_exports,
+                             const std::map<std::string, bool>& old_sdk, const std::map<std::string, bool>& own_sdk);
+
 // Прогноз по частям — для экрана «Что исправит модуль» (то же правило decide, что у sdk_forecast).
 // Сторона игры читается один раз, сторона sdk — для каждой sdk-кандидата; сам прогноз — без ввода-вывода,
 // поэтому его можно считать и по готовым спискам символов (предпросмотр на ПК без файлов игр).
@@ -67,12 +90,18 @@ struct ForecastGame {
     bool opengl = false;                  // какой-то модуль определяет eglCreateWindowSurface
     // символ каталога -> модули игры, которые его импортируют (только символы каталога)
     std::map<std::string, std::vector<std::string>> imports;
+    // Для пробелов sdk (sdk_gaps) — модули игры читаются один раз, здесь же:
+    std::map<std::string, GameImport> all_imports;   // все импорты main/subsdk*
+    std::set<std::string> module_exports;            // экспорты модулей игры, которые игра же и импортирует
+    bool own_sdk_ok = false;                         // своя sdk игры (exefs/sdk) прочитана
+    std::string own_sdk_error;                       // код ошибки, если не прочитана (нет файла — SDK_ABSENT)
+    std::map<std::string, bool> own_sdk;             // нужный игре символ, определённый своей sdk -> заглушка
 };
 struct ForecastSdk {
     std::optional<std::string> name;      // module_name
     bool known = false;                   // name == "nnSdk"
     std::optional<Ver3> version;
-    std::map<std::string, bool> exports;  // символ каталога, определённый в sdk -> тело — заглушка «вернуть константу»
+    std::map<std::string, bool> exports;  // все экспорты sdk -> тело — заглушка «вернуть константу»
 };
 struct FixForecast {
     AutofixFix fix;

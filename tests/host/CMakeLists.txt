@@ -70,3 +70,9 @@ target_compile_definitions(app_update_tests PRIVATE APP_NAME="${APP_NAME}" APP_V
 target_compile_options(app_update_tests PRIVATE -Wall -Wextra -Wformat -Werror=format)
 target_link_libraries(app_update_tests PRIVATE mkcore)
 add_test(NAME app_update COMMAND app_update_tests)
+
+# Правило кнопок страницы игры (source/game_actions.hpp) — чистая функция, без borealis и платформы.
+add_executable(game_actions_tests game_actions_tests.cpp)
+target_include_directories(game_actions_tests PRIVATE ${REPO}/source)
+target_compile_options(game_actions_tests PRIVATE -Wall -Wextra)
+add_test(NAME game_actions COMMAND game_actions_tests)

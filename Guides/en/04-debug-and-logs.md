@@ -12,6 +12,7 @@
    report for this game, a short console passport (firmware and Atmosphère versions) and the install receipt into
    `sdmc:/switch/ModKitNX/logs/<Game> v<version>/` and packs them into a `.zip` next to it. There are no keys and no
    game files inside.
-5. [Open an issue](https://github.com/qret/ModKitNX/issues/new/choose) and attach the `.zip`.
+5. Send the `.zip` to the **4IFIR group on Telegram — [t.me/kf4fr](https://t.me/kf4fr)**, or
+   [open an issue](https://github.com/qret/ModKitNX/issues/new/choose) on GitHub and attach it.
 
 When everything works, untick **“Debug build”** and press **Install** again — the regular module goes back in place.

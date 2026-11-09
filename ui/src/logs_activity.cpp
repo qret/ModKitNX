@@ -14,6 +14,11 @@ void LogsActivity::onContentAvailable() {
     setFrameTitle(this, "logs/title");
     body->clearViews();
     body->addView(makeLabel(tr("logs/working"), 22, colSub()));
+    // Пока собирается — выбирать нечего: фокус на теле без рамки (иначе пустая рамка на прокрутке); B — как обычно.
+    body->setFocusable(true);
+    body->setHideHighlight(true);
+    body->setHideClickAnimation(true);
+    brls::Application::giveFocus(body);
     AliveToken alive = alive_;
     const mk::app::GameDetails d = d_;
     brls::async([this, alive, d]() {
@@ -26,9 +31,12 @@ void LogsActivity::onContentAvailable() {
 
 void LogsActivity::show(const mk::app::LogsView& v) {
     body->clearViews();
+    body->setFocusable(false);   // фокус уйдёт на «Назад» (addBack)
     if (!v.ok) {
-        body->addView(makeLabel(tr("logs/failed"), 24, colBad()));
-        if (!v.error.empty()) body->addView(makeLabel(trText(v.error), 18, colSub()));
+        auto* fail = makeSubCard(Tone::Bad, icon::kBad, tr("logs/failed"), 22);
+        fail->setMarginTop(0);
+        if (!v.error.empty()) addSubLine(fail, trText(v.error), colText(), 18);
+        body->addView(fail);
         addBack();
         return;
     }
@@ -38,7 +46,8 @@ void LogsActivity::show(const mk::app::LogsView& v) {
     auto* zip = makeLabel(v.zip, 24, colOk());
     zip->setMarginBottom(10);
     card->addView(zip);
-    card->addView(makeLabel(tr("logs/send_hint"), 21, colText()));
+    // Что сделать с архивом — главное на экране: синей подкарточкой.
+    card->addView(makeSubCard(Tone::Info, icon::kInfo, tr("logs/send_hint"), 20));
     auto* folder = makeLabel(trf("logs/folder", v.folder), 16, colSub());
     folder->setMarginTop(10);
     card->addView(folder);
@@ -48,9 +57,10 @@ void LogsActivity::show(const mk::app::LogsView& v) {
     auto* list = makeCard();
     list->addView(makeSectionTitle(trf("logs/inside", std::to_string(v.files))));
     for (const auto& t : v.items) list->addView(makeLabel(trText(t), 16, colText()));
-    for (const auto& t : v.warnings) {
-        auto* w = makeLabel(trText(t), 17, colWarn());
-        w->setMarginTop(6);
+    // Чего в архиве нет — жёлтой подкарточкой под списком.
+    if (!v.warnings.empty()) {
+        auto* w = makeSubCard(Tone::Warn, icon::kWarn, tr("common/attention"), 19);
+        for (const auto& t : v.warnings) addSubLine(w, trText(t), colText(), 17);
         list->addView(w);
     }
     body->addView(list);
