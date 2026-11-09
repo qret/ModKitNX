@@ -5,7 +5,7 @@
 ## Lunya (Луня) — Langegen, TorrentShopNX
 
 ModKitNX would not exist in this form without **[TorrentShopNX](https://github.com/Langegen/TorrentShopNX)** by
-**Lunya (Луня) — [Langegen](https://github.com/Langegen)** (GPL-3.0). From it we learned and adapted:
+**Lunya (Луня) — [Langegen](https://github.com/Langegen)** (GPL-3.0). ModKitNX learned from it and adapted:
 
 - the list of installed games through `ns` and `ncm`, title/version/icon from NACP;
 - unpacking the compressed NACP title table of SDK 20+ games (`nacp_text.cpp`) — without it new games show garbage names;
@@ -22,9 +22,8 @@ This is also why ModKitNX is licensed under GPL-3.0-or-later.
 
 ## Duckbill — author of DBI
 
-**Duckbill**, the author of DBI, took our first, single-game file redirection module (made for the Russian
-translation of Trails in the Sky 2nd Chapter) and turned it into **romfsex** — a module that is not tied to one game.
-That showed the way to automate it for every game, and from it we took:
+**Duckbill**, the author of DBI, made **romfsex** — a file redirection module that is not tied to one game. It showed
+how to automate the approach for every game; ModKitNX took from it:
 
 - the mod folder inside the game's own folder `atmosphere/contents/<TitleID>/` instead of a fixed path per game;
 - a wider list of path prefixes the game uses to open its files;
@@ -69,7 +68,7 @@ My heartfelt thanks to the **4IFIR community** — it keeps me motivated, and it
 | [switch-libpulsar](https://github.com/p-sam/switch-libpulsar) | p-sam | system sounds in Borealis (built in from Borealis) | MIT |
 | [glad](https://github.com/Dav1dde/glad) | David Herberth | OpenGL loader generated for Borealis (built in from Borealis) | generated code: public domain (WTFPL / CC0) |
 | [libretro-common](https://github.com/libretro/libretro-common) (`encoding_utf`, `compat_strl`, `features_cpu`) | The RetroArch team | UTF-8 helpers in Borealis (built in from Borealis) | MIT |
-| [exlaunch](https://github.com/shadowninja108/exlaunch) | shadowninja108 | base of our nxredirect exefs module | GPL-2.0 |
+| [exlaunch](https://github.com/shadowninja108/exlaunch) | shadowninja108 | base of the nxredirect exefs module | GPL-2.0 |
 | nxredirect | this project's author | the exefs file-redirect module shipped in romfs as separate files (aggregation) | GPL-2.0 |
 | Lockpick_RCM | shchmue and forks (the original GitHub repository is unavailable) | recommended for dumping console keys (not bundled) | GPL-2.0 |
 
@@ -101,9 +100,8 @@ ModKitNX is not affiliated with Nintendo or with any of the projects above.
 
 ## Duckbill — автор DBI
 
-**Duckbill**, автор DBI, взял наш первый модуль подмены файлов, сделанный под одну игру (для русификатора Trails in
-the Sky 2nd Chapter), и сделал из него **romfsex** — модуль, не привязанный к игре. Это показало, как
-автоматизировать подход для любой игры; оттуда взяты:
+**Duckbill**, автор DBI, сделал **romfsex** — модуль подмены файлов, не привязанный к одной игре. Он показал, как
+автоматизировать подход для любой игры; ModKitNX взял из него:
 
 - папка мода внутри папки игры `atmosphere/contents/<TitleID>/` вместо своего пути под каждую игру;
 - расширенный список префиксов путей, которыми игра открывает файлы;
@@ -148,7 +146,7 @@ the Sky 2nd Chapter), и сделал из него **romfsex** — модуль
 | [switch-libpulsar](https://github.com/p-sam/switch-libpulsar) | p-sam | системные звуки в Borealis (входит в Borealis) | MIT |
 | [glad](https://github.com/Dav1dde/glad) | David Herberth | загрузчик OpenGL, сгенерированный для Borealis (входит в Borealis) | сгенерированный код: общественное достояние (WTFPL / CC0) |
 | [libretro-common](https://github.com/libretro/libretro-common) (`encoding_utf`, `compat_strl`, `features_cpu`) | команда RetroArch | работа с UTF-8 в Borealis (входит в Borealis) | MIT |
-| [exlaunch](https://github.com/shadowninja108/exlaunch) | shadowninja108 | основа нашего exefs-модуля nxredirect | GPL-2.0 |
+| [exlaunch](https://github.com/shadowninja108/exlaunch) | shadowninja108 | основа exefs-модуля nxredirect | GPL-2.0 |
 | nxredirect | автор этого проекта | exefs-модуль подмены файлов, лежит в romfs отдельными файлами (агрегация) | GPL-2.0 |
 | Lockpick_RCM | shchmue и форки (исходный репозиторий на GitHub недоступен) | рекомендуется, чтобы снять ключи консоли (в комплект не входит) | GPL-2.0 |
 
