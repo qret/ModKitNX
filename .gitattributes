@@ -1,0 +1,48 @@
+# ModKitNX — .gitattributes
+* text=auto
+
+# Батники — ASCII + CRLF (cmd.exe с LF ломается на метках и goto).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# PowerShell — CRLF; файл с не-ASCII текстом — UTF-8 С BOM (Windows PowerShell 5.1 без BOM читает ANSI).
+# BOM gitattributes не задаёт — следит сторож (tools/, агент инструментов).
+*.ps1 text eol=crlf
+*.psm1 text eol=crlf
+
+# Остальной текст — LF.
+*.md text eol=lf
+*.c text eol=lf
+*.cpp text eol=lf
+*.h text eol=lf
+*.hpp text eol=lf
+*.inc text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
+# hooks без расширения: sh на Windows спотыкается о CRLF.
+tools/hooks/* text eol=lf
+*.mk text eol=lf
+Makefile text eol=lf
+CMakeLists.txt text eol=lf
+*.cmake text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.xml text eol=lf
+*.txt text eol=lf
+
+# Двоичное.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ttf binary
+*.otf binary
+*.bin binary
+*.nro binary
+*.nso binary
+subsdk binary
+
+# nxredirect/exlaunch — клон exlaunch (GPL-2.0) с нашими правками: байты как есть, без перевода строк
+# (часть файлов апстрима в CRLF). Так копия совпадает с источником побайтно. Правило — последним:
+# оно перекрывает eol=lf для *.cpp/*.h выше.
+nxredirect/exlaunch/** -text

@@ -1,0 +1,46 @@
+<!-- ModKitNX — строка списка игр. SPDX-License-Identifier: GPL-3.0-or-later
+     Based on TorrentShopNX by Langegen (GPL-3.0): resources/xml/library_row_cell.xml (раскладка строки: иконка,
+     название, подстрока, значки) -->
+<brls:Box
+    width="auto"
+    height="92px"
+    axis="row"
+    alignItems="center"
+    focusable="true"
+    paddingTop="10"
+    paddingBottom="10"
+    paddingLeft="16"
+    paddingRight="20">
+
+    <brls:Image
+        id="icon"
+        width="68px"
+        height="68px"
+        cornerRadius="10"
+        scalingType="fit"
+        marginRight="20" />
+
+    <brls:Box width="auto" height="auto" axis="column" grow="1.0" marginRight="16">
+        <brls:Label id="name" text="" fontSize="22" singleLine="true" />
+        <brls:Box width="auto" height="auto" axis="row" alignItems="center" marginTop="5">
+            <brls:Label id="sub" text="" fontSize="16" textColor="@theme/brls/header/subtitle" singleLine="true" marginRight="14" />
+
+            <brls:Box id="badgeOurs" width="auto" height="auto" paddingTop="3" paddingBottom="3" paddingLeft="9" paddingRight="9"
+                cornerRadius="5" backgroundColor="#4CAF50" marginRight="8" visibility="gone">
+                <brls:Label id="tr/games/badge_ours" text="" fontSize="15" textColor="#FFFFFF" singleLine="true" />
+            </brls:Box>
+
+            <brls:Box id="badgeSdk" width="auto" height="auto" paddingTop="3" paddingBottom="3" paddingLeft="9" paddingRight="9"
+                cornerRadius="5" backgroundColor="#FF9800" marginRight="8" visibility="gone">
+                <brls:Label id="badgeSdkText" text="" fontSize="15" textColor="#FFFFFF" singleLine="true" />
+            </brls:Box>
+
+            <brls:Box id="badgeMods" width="auto" height="auto" paddingTop="3" paddingBottom="3" paddingLeft="9" paddingRight="9"
+                cornerRadius="5" backgroundColor="#7C4DFF" visibility="gone">
+                <brls:Label id="tr/games/badge_mods" text="" fontSize="15" textColor="#FFFFFF" singleLine="true" />
+            </brls:Box>
+        </brls:Box>
+    </brls:Box>
+
+    <brls:Label id="sdkRight" text="" width="170px" fontSize="18" textColor="@theme/brls/header/subtitle" horizontalAlign="right" singleLine="true" />
+</brls:Box>

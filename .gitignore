@@ -1,0 +1,89 @@
+# ModKitNX — .gitignore
+# Правило: в git — только исходники, описи и документы. Ключи, дампы и файлы игр — никогда.
+
+# --- Сборка ---
+build/
+out/
+*.nro
+*.elf
+*.nacp
+*.nso
+*.lst
+*.map
+*.o
+*.d
+romfs.bin
+CMakeCache.txt
+CMakeFiles/
+cmake-build-*/
+
+# --- Скачанные зависимости (кладёт tools/fetch-deps.ps1; в git — только VENDORED.md и скрипт) ---
+third_party/*
+!third_party/VENDORED.md
+!third_party/README.md
+!third_party/fetch.ps1
+
+# --- Ключи и секреты консоли ---
+prod.keys
+title.keys
+dev.keys
+*.keys
+*.key
+*.pem
+.env
+.env.*
+*_token*
+*.tik
+*.cert
+
+# --- Файлы игр и дампы (раздавать нельзя; приложение делает всё на консоли из файлов пользователя) ---
+*.nsp
+*.nsz
+*.xci
+*.xcz
+*.nca
+*.ncz
+# Синтетические пробы хост-тестов, если понадобятся, — отдельным исключением `!tests/host/synthetic/**`
+# (только сгенерированные, не из игр).
+*.npdm
+*.npdm.orig
+**/exefs/main
+**/exefs/sdk
+**/exefs/rtld
+**/exefs/subsdk[0-9]
+**/sdk/nnSdk*
+dumps/
+exefs-dump/
+dryrun/
+*.removed-*
+*.bak-*
+
+# --- Архивы ---
+*.zip
+*.7z
+*.rar
+
+# --- Временное и локальное ---
+scratch/
+tmp/
+*.log
+log.txt
+config.ini
+.vs/
+.vscode/
+.idea/
+__pycache__/
+*.pyc
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Файлы sdk (код Nintendo) — НИКОГДА не в git и не на GitHub.
+/SDK/
+SDK/
+**/NintendoSdk_*
+
+# Снимки: в git — только 6 для README (screenshots/readme/) и опись; полный прогон предпросмотра — локально.
+/screenshots/*
+!/screenshots/readme/
+!/screenshots/README.md

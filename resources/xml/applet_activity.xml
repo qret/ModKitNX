@@ -1,0 +1,34 @@
+<!-- ModKitNX — режим апплета (запуск из Альбома): иконка, «Запустите через
+     игру», короткое пояснение, три шага и «Выйти». Без ядра, игр и сети. Код — ui/src/applet_activity.cpp.
+     SPDX-License-Identifier: GPL-3.0-or-later -->
+<brls:AppletFrame headerHidden="true">
+    <brls:Box width="auto" height="auto" grow="1.0" axis="column" justifyContent="center" alignItems="center" paddingBottom="16">
+
+        <brls:Image id="icon" width="96" height="96" cornerRadius="22" scalingType="fit" marginBottom="20" />
+        <brls:Label id="tr/applet/title" text="" fontSize="34" textColor="@theme/mk/warn" horizontalAlign="center" singleLine="true" marginBottom="10" />
+        <brls:Label id="tr/applet/lead" text="" fontSize="20" textColor="@theme/brls/header/subtitle" horizontalAlign="center" width="760" marginBottom="26" />
+
+        <brls:Box width="760" height="auto" axis="column" backgroundColor="@theme/mk/panel" cornerRadius="12" paddingTop="10" paddingBottom="10" paddingLeft="22" paddingRight="22" marginBottom="28">
+            <brls:Box width="auto" height="auto" axis="row" alignItems="center" paddingTop="10" paddingBottom="10">
+                <brls:Box width="44px" height="44px" cornerRadius="22" backgroundColor="@theme/mk/info" alignItems="center" justifyContent="center" marginRight="20">
+                    <brls:Label text="1" fontSize="24" textColor="#FFFFFF" horizontalAlign="center" singleLine="true" />
+                </brls:Box>
+                <brls:Label id="tr/applet/step1" text="" fontSize="22" grow="1.0" />
+            </brls:Box>
+            <brls:Box width="auto" height="auto" axis="row" alignItems="center" paddingTop="10" paddingBottom="10">
+                <brls:Box width="44px" height="44px" cornerRadius="22" backgroundColor="@theme/mk/info" alignItems="center" justifyContent="center" marginRight="20">
+                    <brls:Label text="2" fontSize="24" textColor="#FFFFFF" horizontalAlign="center" singleLine="true" />
+                </brls:Box>
+                <brls:Label id="tr/applet/step2" text="" fontSize="22" grow="1.0" />
+            </brls:Box>
+            <brls:Box width="auto" height="auto" axis="row" alignItems="center" paddingTop="10" paddingBottom="10">
+                <brls:Box width="44px" height="44px" cornerRadius="22" backgroundColor="@theme/mk/info" alignItems="center" justifyContent="center" marginRight="20">
+                    <brls:Label text="3" fontSize="24" textColor="#FFFFFF" horizontalAlign="center" singleLine="true" />
+                </brls:Box>
+                <brls:Label id="step3" text="" fontSize="22" grow="1.0" />
+            </brls:Box>
+        </brls:Box>
+
+        <brls:Button id="btnExit" text="" style="primary" width="300px" height="60px" />
+    </brls:Box>
+</brls:AppletFrame>

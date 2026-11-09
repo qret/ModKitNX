@@ -1,0 +1,28 @@
+<!-- ModKitNX — главный экран: список игр. SPDX-License-Identifier: GPL-3.0-or-later -->
+<brls:AppletFrame>
+    <brls:Box title=""
+        width="auto"
+        height="auto"
+        axis="column"
+        grow="1.0"
+        paddingTop="10"
+        paddingRight="0"
+        paddingBottom="6"
+        paddingLeft="0">
+
+        <brls:Box width="auto" height="auto" axis="row" alignItems="center" justifyContent="spaceBetween" marginBottom="10"
+            marginLeft="40" marginRight="40">
+            <brls:Label id="consoleLine" text="" fontSize="18" textColor="@theme/brls/header/subtitle" singleLine="true" />
+            <brls:Label id="countLine" text="" fontSize="18" textColor="@theme/brls/header/subtitle" singleLine="true" />
+        </brls:Box>
+
+        <brls:Box id="statusBox" width="auto" height="auto" grow="1.0" axis="column" alignItems="center" justifyContent="center"
+            marginLeft="40" marginRight="40">
+            <brls:Label id="statusText" text="" fontSize="26" textColor="@theme/brls/header/subtitle" horizontalAlign="center" />
+        </brls:Box>
+
+        <!-- Поля слева/справа — у самого RecyclerFrame, не у родителя: ячейки RecyclerFrame (borealis 5f08b28)
+             ставятся со сдвигом на отступ родителя, но шириной во весь кадр и уезжали за правый край экрана. -->
+        <brls:RecyclerFrame id="list" width="auto" height="auto" grow="1.0" visibility="gone" paddingLeft="40" paddingRight="40" />
+    </brls:Box>
+</brls:AppletFrame>

@@ -1,0 +1,50 @@
+name: Game does not start / Игра не запускается
+description: A game or a mod does not work after ModKitNX. / Игра или мод не работает после ModKitNX.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Before you write / Перед тем как писать**
+
+        1. Tick **Debug build** on the game's page and press **Install**. / Отметьте **«Отладочная сборка»** на странице игры и нажмите **«Установить»**.
+        2. Start the game once. / Запустите игру один раз.
+        3. Press **Collect logs to send** and attach the `.zip` below. / Нажмите **«Собрать логи для отправки»** и приложите `.zip` ниже.
+
+        The `.zip` has no keys and no game files. **Do not attach** `prod.keys`, `title.keys`, game files (NSP/XCI/NCA, `main`, `sdk`) or sdk files. /
+        В `.zip` нет ключей и файлов игры. **Не прикладывайте** `prod.keys`, `title.keys`, файлы игры (NSP/XCI/NCA, `main`, `sdk`) и файлы sdk.
+  - type: input
+    id: game
+    attributes:
+      label: Game, version and TitleID / Игра, версия и TitleID
+      placeholder: "Well Dweller 1.0.2, 0100XXXXXXXXX000"
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware and Atmosphère / Прошивка и Atmosphère
+      placeholder: "HOS 19.0.1, Atmosphère 1.8.0, emuMMC"
+    validations:
+      required: true
+  - type: input
+    id: app_version
+    attributes:
+      label: ModKitNX version / Версия ModKitNX
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens / Что происходит
+      description: Black screen, freeze, crash with an error code, the mod is not applied… / Чёрный экран, зависание, вылет с кодом ошибки, мод не подхватился…
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (.zip) / Логи (.zip)
+      description: Drag the `.zip` from `sdmc:/switch/ModKitNX/logs/` here. / Перетащите сюда `.zip` из `sdmc:/switch/ModKitNX/logs/`.
+    validations:
+      required: true

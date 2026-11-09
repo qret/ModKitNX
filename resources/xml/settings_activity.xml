@@ -1,0 +1,15 @@
+<!-- ModKitNX — настройки и о программе; содержимое строится в коде (ui/src/settings_activity.cpp).
+     SPDX-License-Identifier: GPL-3.0-or-later -->
+<brls:AppletFrame>
+    <brls:ScrollingFrame title="" width="auto" height="auto" grow="1.0">
+        <brls:Box
+            id="body"
+            width="auto"
+            height="auto"
+            axis="column"
+            paddingTop="16"
+            paddingRight="50"
+            paddingBottom="16"
+            paddingLeft="50" />
+    </brls:ScrollingFrame>
+</brls:AppletFrame>

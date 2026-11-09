@@ -1,0 +1,9 @@
+{
+    "_comment": "Languages of the interface. code = folder name in resources/i18n/; name = the language's own name (endonym); english = its name in English (shown small next to it); choose = 'Choose a language' in that language (first-run screen). Add a line here and a folder next to this file — no code changes. See TRANSLATING.md.",
+    "default": "en-US",
+    "languages": [
+        { "code": "en-US", "name": "English", "english": "English", "choose": "Choose a language" },
+        { "code": "ru", "name": "Русский", "english": "Russian", "choose": "Выберите язык" },
+        { "code": "uk", "name": "Українська", "english": "Ukrainian", "choose": "Оберіть мову" }
+    ]
+}

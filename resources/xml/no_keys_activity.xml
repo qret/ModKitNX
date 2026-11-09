@@ -1,0 +1,43 @@
+<!-- ModKitNX — «Нет ключей консоли»: шаги Lockpick_RCM (текст — спецификация). SPDX-License-Identifier: GPL-3.0-or-later -->
+<brls:AppletFrame>
+    <brls:ScrollingFrame title="" width="auto" height="auto" grow="1.0">
+        <brls:Box width="auto" height="auto" axis="column" paddingTop="24" paddingRight="80" paddingBottom="20" paddingLeft="80">
+
+            <brls:Label id="tr/nokeys/headline" text="" fontSize="30" textColor="@theme/mk/warn" marginBottom="10" />
+            <brls:Label id="tr/nokeys/lead" text="" fontSize="22" marginBottom="22" />
+            <brls:Box width="auto" height="auto" axis="row" alignItems="center" marginBottom="16" backgroundColor="@theme/mk/panel" cornerRadius="10" paddingTop="14" paddingBottom="14" paddingLeft="18" paddingRight="18">
+                <brls:Box width="52px" height="52px" cornerRadius="26" backgroundColor="@theme/mk/info" alignItems="center" justifyContent="center" marginRight="22">
+                    <brls:Label text="1" fontSize="28" textColor="#FFFFFF" horizontalAlign="center" singleLine="true" />
+                </brls:Box>
+                <brls:Label id="tr/nokeys/step1" text="" fontSize="24" grow="1.0" />
+            </brls:Box>
+            <brls:Box width="auto" height="auto" axis="row" alignItems="center" marginBottom="16" backgroundColor="@theme/mk/panel" cornerRadius="10" paddingTop="14" paddingBottom="14" paddingLeft="18" paddingRight="18">
+                <brls:Box width="52px" height="52px" cornerRadius="26" backgroundColor="@theme/mk/info" alignItems="center" justifyContent="center" marginRight="22">
+                    <brls:Label text="2" fontSize="28" textColor="#FFFFFF" horizontalAlign="center" singleLine="true" />
+                </brls:Box>
+                <brls:Label id="tr/nokeys/step2" text="" fontSize="24" grow="1.0" />
+            </brls:Box>
+            <brls:Box width="auto" height="auto" axis="row" alignItems="center" marginBottom="16" backgroundColor="@theme/mk/panel" cornerRadius="10" paddingTop="14" paddingBottom="14" paddingLeft="18" paddingRight="18">
+                <brls:Box width="52px" height="52px" cornerRadius="26" backgroundColor="@theme/mk/info" alignItems="center" justifyContent="center" marginRight="22">
+                    <brls:Label text="3" fontSize="28" textColor="#FFFFFF" horizontalAlign="center" singleLine="true" />
+                </brls:Box>
+                <brls:Label id="tr/nokeys/step3" text="" fontSize="24" grow="1.0" />
+            </brls:Box>
+            <brls:Box width="auto" height="auto" axis="row" alignItems="center" marginBottom="16" backgroundColor="@theme/mk/panel" cornerRadius="10" paddingTop="14" paddingBottom="14" paddingLeft="18" paddingRight="18">
+                <brls:Box width="52px" height="52px" cornerRadius="26" backgroundColor="@theme/mk/info" alignItems="center" justifyContent="center" marginRight="22">
+                    <brls:Label text="4" fontSize="28" textColor="#FFFFFF" horizontalAlign="center" singleLine="true" />
+                </brls:Box>
+                <brls:Label id="tr/nokeys/step4" text="" fontSize="24" grow="1.0" />
+            </brls:Box>
+            <brls:Box width="auto" height="auto" axis="row" alignItems="center" marginBottom="16" backgroundColor="@theme/mk/panel" cornerRadius="10" paddingTop="14" paddingBottom="14" paddingLeft="18" paddingRight="18">
+                <brls:Box width="52px" height="52px" cornerRadius="26" backgroundColor="@theme/mk/info" alignItems="center" justifyContent="center" marginRight="22">
+                    <brls:Label text="5" fontSize="28" textColor="#FFFFFF" horizontalAlign="center" singleLine="true" />
+                </brls:Box>
+                <brls:Label id="tr/nokeys/step5" text="" fontSize="24" grow="1.0" />
+            </brls:Box>
+            <brls:Label id="tr/nokeys/privacy" text="" fontSize="17" textColor="@theme/brls/header/subtitle" marginTop="10" marginBottom="22" />
+
+            <brls:Button id="btnOk" text="" style="primary" width="300px" height="60px" />
+        </brls:Box>
+    </brls:ScrollingFrame>
+</brls:AppletFrame>

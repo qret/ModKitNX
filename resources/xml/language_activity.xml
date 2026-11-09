@@ -1,0 +1,14 @@
+<!-- ModKitNX — выбор языка при первом запуске: иконка, приветствие, список языков по центру; без шапки, в подвале —
+     подсказки кнопок. Содержимое строится в коде (ui/src/language_activity.cpp).
+     SPDX-License-Identifier: GPL-3.0-or-later -->
+<brls:AppletFrame headerHidden="true">
+    <brls:Box
+        id="body"
+        width="auto"
+        height="auto"
+        grow="1.0"
+        axis="column"
+        justifyContent="center"
+        alignItems="center"
+        paddingBottom="24" />
+</brls:AppletFrame>

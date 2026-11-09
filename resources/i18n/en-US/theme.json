@@ -1,0 +1,11 @@
+{
+    "title": "Theme",
+    "system": "As on the console",
+    "now_light": "now light",
+    "now_dark": "now dark",
+    "light": "Light",
+    "dark": "Dark",
+    "note": "The theme is applied when the app starts: after changing it, close the app and open it again.",
+    "saved": "Saved. Restart the app to switch the theme.",
+    "same": "Saved."
+}
