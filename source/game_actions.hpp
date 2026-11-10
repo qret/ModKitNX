@@ -17,10 +17,10 @@
 //   - Игре ничего не нужно: sdk игры не новее прошивки (подмена не нужна), ZBIC снимать не нужно, модулю нечего
 //     исправлять из каталога и нет пробелов sdk, которые требуют модуля. Тогда, пока модуль не установлен и наша
 //     подмена не стоит:
-//       - модов нет — ни «Установить», ни выбора sdk, ни флажка «Отладочная сборка»; вместо них строка «Игре ничего
+//       - модов нет или выбрано «Без мода» — ни «Установить», ни выбора sdk, ни флажка «Отладочная сборка»; вместо них строка «Игре ничего
 //         не нужно» (nothingNeeded);
-//       - мод есть (выбран или есть в списке) — «Установить мод»: модуль и мод без подмены sdk, флажок «Отладочная
-//         сборка» остаётся, выбора sdk нет (installModOnly). Мод не выбран — кнопка просит выбрать его.
+//       - мод выбран — «Установить мод»: модуль и мод без подмены sdk, флажок «Отладочная сборка» остаётся, выбора
+//         sdk нет (installModOnly); выбрано «Без мода» — как без модов.
 //     Модуль или подмена уже стоят — кнопки как обычно (удалить, переустановить с причиной).
 //   - «Отчёт отладки» — только если у игры есть отчёт; «Собрать логи для отправки» — если есть отчёт модуля или
 //     отчёт Atmosphère о падении этой игры.
@@ -43,7 +43,6 @@ struct GameActionsInput {
                                     // текущей (неизвестно — да)
     bool sdkGaps = false;           // у этой sdk есть пробелы, которые модуль не восполнит
     bool swapNotNeeded = false;     // sdk игры не новее прошивки — подмена не нужна
-    bool modAvailable = false;      // в списке модов игры есть мод, который можно выбрать
     bool zbicUnpack = false;        // установка снимет ZBIC
     bool diagReport = false;        // у игры есть отчёт отладки
     bool crashReport = false;       // есть отчёт Atmosphère о падении этой игры
@@ -63,7 +62,6 @@ struct GameActions {
     bool installModOnly = false;    // «Установить мод»: модуль и мод, без подмены sdk
     bool sdkChoice = true;          // показывать выбор sdk
     bool debugToggle = true;        // показывать флажок «Отладочная сборка»
-    bool pickMod = false;           // «Установить мод», но мод не выбран — сначала выбрать его
     bool diagReport = false;        // «Отчёт отладки»
     bool collectLogs = false;       // «Собрать логи для отправки»
 };
@@ -85,13 +83,11 @@ inline bool gameNeedsNothing(const GameActionsInput& s) {
 inline GameActions decideGameActions(const GameActionsInput& s) {
     GameActions a;
     if (!s.moduleInstalled && gameNeedsNothing(s)) {
-        const bool mod = s.modChosen || s.modAvailable;
-        a.nothingNeeded = !mod;
-        a.installModOnly = mod;
-        a.install = mod;
-        a.pickMod = mod && !s.modChosen;
+        a.nothingNeeded = !s.modChosen;
+        a.installModOnly = s.modChosen;
+        a.install = s.modChosen;
         a.sdkChoice = false;
-        a.debugToggle = mod;
+        a.debugToggle = s.modChosen;
         a.diagReport = s.diagReport;
         a.collectLogs = s.diagReport || s.crashReport;
         return a;

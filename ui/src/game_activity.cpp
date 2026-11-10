@@ -670,14 +670,15 @@ void GameActivity::addGaps(const mk::app::FixForecastView& f) {
 void GameActivity::buildMods(brls::Box* parent) {
     auto* card = makeCard();
     card->addView(makeSectionTitle(tr("mods/title")));
-    auto* q = makeLabel(tr("mods/question"), 22, colText());
-    q->setMarginBottom(8);
-    card->addView(q);
     if (d_.mods.empty()) {
+        // Модов нет — выбирать нечего: без вопроса, только куда положить мод.
         card->addView(makeSubCard(Tone::Neutral, icon::kInfo, trf("mods/none_found", mk::plat::paths::kModsDir + row_.tid + "/"), 18));
         parent->addView(card);
         return;
     }
+    auto* q = makeLabel(tr("mods/question"), 22, colText());
+    q->setMarginBottom(8);
+    card->addView(q);
     auto refresh = [this]() {
         for (size_t i = 0; i < modRows_.size(); ++i) modRows_[i]->setChecked(static_cast<int>(i) - 1 == modChoice_);
         refreshActions();
@@ -704,6 +705,7 @@ void GameActivity::buildMods(brls::Box* parent) {
         if (m.inContents) add(tr("mods/f_in_contents"));
         auto* r = new ChoiceRow(m.title.empty() ? m.id : m.title, "", flags);
         const int idx = static_cast<int>(i);
+        r->setId("mod_row_" + std::to_string(idx));
         r->onPick([this, refresh, idx] {
             modChoice_ = idx;
             refresh();
@@ -776,8 +778,6 @@ mk::app::GameActionsInput GameActivity::actionsInput() const {
         }
     }
     s.swapNotNeeded = d_.sdk.advice.need == SdkNeed::NotNeeded;
-    for (const auto& m : d_.mods)
-        if (!m.inContents) s.modAvailable = true;
     s.zbicUnpack = d_.zbicUnpack && !d_.zbicUnpackedOurs;
     s.diagReport = reports_.diag;
     s.crashReport = reports_.crash;
@@ -827,13 +827,8 @@ void GameActivity::refreshActions() {
         // Игре ничего не нужно, но есть мод — «Установить мод»: модуль и мод, без подмены sdk.
         const bool swapOnly = a.installSwapOnly;
         const bool modOnly = a.installModOnly;
-        const bool pickMod = a.pickMod;
         auto* install = makeButton(tr(modOnly ? "actions/install_mod" : "actions/install"), &brls::BUTTONSTYLE_PRIMARY,
-                                   [this, swapOnly, modOnly, pickMod] {
-            if (pickMod) {
-                brls::Application::notify(tr("actions/pick_mod"));
-                return;
-            }
+                                   [this, swapOnly, modOnly] {
             if (swapOnly) {
                 startOperation(OpKind::SdkSwap);
                 return;
@@ -867,11 +862,6 @@ void GameActivity::refreshActions() {
         main = re;   // есть причина поставить заново — фокус на «Переустановить», а не на удаление
     }
     actionsBox_->addView(row);
-    if (a.pickMod) {
-        auto* hint = makeLabel(tr("actions/pick_mod"), 17, colInfo());
-        hint->setMarginTop(6);
-        actionsBox_->addView(hint);
-    }
     if (a.reinstall != Reinstall::None) {
         const char* key = a.reinstall == Reinstall::Stale     ? "actions/why_stale"
                           : a.reinstall == Reinstall::ToDebug ? "debug/will_debug"

@@ -97,14 +97,11 @@ int main() {
         CHECK(a.nothingNeeded && !a.install && !a.installModOnly, "модов нет — «ничего не нужно», без «Установить»");
         CHECK(!a.sdkChoice && !a.debugToggle && !a.sdkSwap && !a.alsoSwaps, "модов нет — без выбора sdk и флажка");
         CHECK(!a.uninstall && a.reinstall == Reinstall::None && !a.sdkRemove, "модов нет — других кнопок нет");
-        s.modAvailable = true;
-        a = decideGameActions(s);
-        CHECK(a.install && a.installModOnly && !a.nothingNeeded, "мод в списке — «Установить мод»");
-        CHECK(a.pickMod, "мод в списке, не выбран — сначала выбрать");
-        CHECK(!a.sdkChoice && a.debugToggle && !a.alsoSwaps && !a.sdkSwap, "мод — флажок есть, выбора sdk нет");
+        // Мод в списке есть, но выбрано «Без мода» (modChosen = false) — как без модов: см. проверки выше.
         s.modChosen = s.modDiffers = true;
         a = decideGameActions(s);
-        CHECK(a.installModOnly && !a.pickMod && !a.alsoSwaps, "мод выбран — «Установить мод» без подмены");
+        CHECK(a.install && a.installModOnly && !a.nothingNeeded, "мод выбран — «Установить мод»");
+        CHECK(!a.sdkChoice && a.debugToggle && !a.alsoSwaps && !a.sdkSwap, "мод — флажок есть, выбора sdk нет");
         s.debugChosen = true;
         a = decideGameActions(s);
         CHECK(a.installModOnly && a.debugToggle, "отладочная с модом — та же кнопка");
@@ -113,7 +110,7 @@ int main() {
         a = decideGameActions(s);
         CHECK(!a.install && !a.installModOnly && !a.nothingNeeded && a.uninstall, "модуль стоит — «Удалить установленное»");
         CHECK(a.reinstall == Reinstall::OtherMod && a.sdkChoice && a.debugToggle, "модуль стоит — прежние правила");
-        s.modChosen = s.modDiffers = s.modAvailable = false;
+        s.modChosen = s.modDiffers = false;
         a = decideGameActions(s);
         CHECK(a.uninstall && a.reinstall == Reinstall::None && !a.nothingNeeded, "модуль стоит без модов — только удалить");
         s.moduleInstalled = false;

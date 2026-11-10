@@ -200,8 +200,7 @@
         "why_other_sdk": "A different sdk is selected than the one swapped in now — “Reinstall” swaps it.",
         "swap_only": "Installing will swap the sdk for {0} — nothing else is needed.",
         "nothing_needed": "The game needs nothing — it will run on this firmware as is.",
-        "install_mod": "Install mod",
-        "pick_mod": "Pick a mod above first."
+        "install_mod": "Install mod"
     },
     "op": {
         "done_toast": "{0}: done. The changes apply the next time the game starts.",
