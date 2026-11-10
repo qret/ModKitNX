@@ -100,6 +100,8 @@ void GameActivity::build() {
     modRows_.clear();
     fixesBox_ = nullptr;
     sdkButtons_ = nullptr;
+    sdkChoiceBox_ = nullptr;
+    debugRow_ = nullptr;
     actionsBox_ = nullptr;
     firstFocus_ = nullptr;
     buildHeader(body);
@@ -340,13 +342,15 @@ void GameActivity::buildSdk(brls::Box* parent) {
         find->setMarginTop(10);
     }
 
-    // Выбор sdk — прямо под вопросом.
+    // Выбор sdk — прямо под вопросом; вместе с вопросом скрывается, когда decideGameActions его не показывает.
+    sdkChoiceBox_ = makeColumn();
+    card->addView(sdkChoiceBox_);
     auto* q = makeLabel(tr("sdk/question"), 22, colText());
     q->setMarginTop(16);
     q->setMarginBottom(8);
-    card->addView(q);
+    sdkChoiceBox_->addView(q);
     if (sdk_.empty()) {
-        card->addView(makeLabel(trf("sdk/none_found", mk::plat::paths::kSdkDirOwn, mk::plat::paths::kSdkDirDbi), 18,
+        sdkChoiceBox_->addView(makeLabel(trf("sdk/none_found", mk::plat::paths::kSdkDirOwn, mk::plat::paths::kSdkDirDbi), 18,
                                 colSub()));
     } else {
         auto refresh = [this]() {
@@ -360,7 +364,7 @@ void GameActivity::buildSdk(brls::Box* parent) {
             refresh();
         });
         sdkRows_.push_back(none);
-        card->addView(none);
+        sdkChoiceBox_->addView(none);
         for (size_t i = 0; i < sdk_.size(); ++i) {
             const auto& l = sdk_[i];
             std::string sub = l.inOwn && l.inDbi ? tr("sdk/choice_sub_both")
@@ -376,7 +380,7 @@ void GameActivity::buildSdk(brls::Box* parent) {
                 refresh();
             });
             sdkRows_.push_back(r);
-            card->addView(r);
+            sdkChoiceBox_->addView(r);
         }
         refresh();
     }
@@ -723,6 +727,7 @@ void GameActivity::buildActions(brls::Box* parent) {
         refreshActions();
     });
     dbg->setMarginTop(4);
+    debugRow_ = dbg;
     parent->addView(dbg);
     // Кнопки, строки при них, «Отладка» и «Собрать логи» — в actionsBox_ (перестраивается refreshActions).
     actionsBox_ = makeColumn();
@@ -753,11 +758,15 @@ mk::app::GameActionsInput GameActivity::actionsInput() const {
     }
     // Есть ли модулю работа для выбранной sdk: своя функция у нужного игре (не посчитано — «да»); отдельно — пробелы
     // sdk, которые модуль не восполнит (не проверено — считаем, что есть: «Подменить sdk» не предлагаем).
+    // Без выбора — то же для текущей sdk игры (родной или подменённой).
     s.moduleHasWork = true;
     s.sdkGaps = true;
     const auto& b = d_.fixes;
-    if (haveChoice && b.gameOk && sdkChoice_ < static_cast<int>(b.bySdk.size())) {
-        const auto& f = b.bySdk[sdkChoice_];
+    const mk::app::FixForecastView* fv = nullptr;
+    if (haveChoice && b.gameOk && sdkChoice_ < static_cast<int>(b.bySdk.size())) fv = &b.bySdk[sdkChoice_];
+    else if (!haveChoice && b.gameOk) fv = &b.current;
+    if (fv) {
+        const auto& f = *fv;
         if (f.ok) {
             bool work = false;
             for (const auto& l : f.fixes)
@@ -766,6 +775,9 @@ mk::app::GameActionsInput GameActivity::actionsInput() const {
             s.sdkGaps = !b.ownSdkOk || !f.gaps.empty();
         }
     }
+    s.swapNotNeeded = d_.sdk.advice.need == SdkNeed::NotNeeded;
+    for (const auto& m : d_.mods)
+        if (!m.inContents) s.modAvailable = true;
     s.zbicUnpack = d_.zbicUnpack && !d_.zbicUnpackedOurs;
     s.diagReport = reports_.diag;
     s.crashReport = reports_.crash;
@@ -790,7 +802,16 @@ void GameActivity::refreshActions() {
         sdkButtons_->addView(b);
     }
 
+    sdkChoiceBox_->setVisibility(a.sdkChoice ? brls::Visibility::VISIBLE : brls::Visibility::GONE);
+    if (debugRow_) debugRow_->setVisibility(a.debugToggle ? brls::Visibility::VISIBLE : brls::Visibility::GONE);
+
     actionsBox_->clearViews();
+    // Игре ничего не нужно и модов нет — зелёная подкарточка вместо кнопки установки.
+    if (a.nothingNeeded) {
+        auto* ok = makeSubCard(Tone::Ok, icon::kOk, tr("actions/nothing_needed"), 20);
+        ok->setMarginTop(8);
+        actionsBox_->addView(ok);
+    }
     // Выбор sdk виден и у кнопки установки: подмена входит в «Установить» / «Переустановить».
     if ((a.alsoSwaps || a.installSwapOnly) && sdkChoice_ >= 0 && sdkChoice_ < static_cast<int>(sdk_.size())) {
         auto* n = makeLabel(trf(a.installSwapOnly ? "actions/swap_only" : "actions/also_swap", sdk_[sdkChoice_].version),
@@ -803,8 +824,16 @@ void GameActivity::refreshActions() {
     brls::View* main = nullptr;
     if (a.install) {
         // Делать, кроме подмены, нечего (пробелы модуль не закроет) — «Установить» = план «Подменить sdk».
+        // Игре ничего не нужно, но есть мод — «Установить мод»: модуль и мод, без подмены sdk.
         const bool swapOnly = a.installSwapOnly;
-        auto* install = makeButton(tr("actions/install"), &brls::BUTTONSTYLE_PRIMARY, [this, swapOnly] {
+        const bool modOnly = a.installModOnly;
+        const bool pickMod = a.pickMod;
+        auto* install = makeButton(tr(modOnly ? "actions/install_mod" : "actions/install"), &brls::BUTTONSTYLE_PRIMARY,
+                                   [this, swapOnly, modOnly, pickMod] {
+            if (pickMod) {
+                brls::Application::notify(tr("actions/pick_mod"));
+                return;
+            }
             if (swapOnly) {
                 startOperation(OpKind::SdkSwap);
                 return;
@@ -813,7 +842,7 @@ void GameActivity::refreshActions() {
                 brls::Application::pushActivity(new NoKeysActivity());
                 return;
             }
-            startOperation(OpKind::Install);
+            startOperation(OpKind::Install, !modOnly);
         });
         install->setId("install_btn");
         row->addView(install);
@@ -838,6 +867,11 @@ void GameActivity::refreshActions() {
         main = re;   // есть причина поставить заново — фокус на «Переустановить», а не на удаление
     }
     actionsBox_->addView(row);
+    if (a.pickMod) {
+        auto* hint = makeLabel(tr("actions/pick_mod"), 17, colInfo());
+        hint->setMarginTop(6);
+        actionsBox_->addView(hint);
+    }
     if (a.reinstall != Reinstall::None) {
         const char* key = a.reinstall == Reinstall::Stale     ? "actions/why_stale"
                           : a.reinstall == Reinstall::ToDebug ? "debug/will_debug"
@@ -885,9 +919,9 @@ std::string GameActivity::selectedModPath() const {
     return (modChoice_ >= 0 && modChoice_ < static_cast<int>(d_.mods.size())) ? d_.mods[modChoice_].path : "";
 }
 
-void GameActivity::startOperation(OpKind op) {
+void GameActivity::startOperation(OpKind op, bool withSdk) {
     AliveToken alive = alive_;
-    std::string sdkPath = selectedSdkPath();
+    std::string sdkPath = withSdk ? selectedSdkPath() : std::string();
     // Чужую подмену sdk при установке не трогаем: план ядра всё равно откажет, но не предлагаем.
     if (d_.sdk.swapPresent && !d_.sdk.swapOurs && op == OpKind::Install) sdkPath.clear();
     const bool debug = (op == OpKind::Install) && debug_;

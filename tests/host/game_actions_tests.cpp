@@ -88,6 +88,61 @@ int main() {
         a = decideGameActions(s);
         CHECK(!a.install && !a.installSwapOnly, "модуль стоит — «Установить» нет");
     }
+    {   // Pokémon Legends: Z-A (sdk игры 19.3.11, прошивка 19.0.1): подмена не нужна, ZBIC нет, модулю нечего
+        // исправлять, пробелов нет — игре ничего не нужно.
+        GameActionsInput s;
+        s.swapNotNeeded = true;
+        s.moduleHasWork = false;
+        auto a = decideGameActions(s);
+        CHECK(a.nothingNeeded && !a.install && !a.installModOnly, "модов нет — «ничего не нужно», без «Установить»");
+        CHECK(!a.sdkChoice && !a.debugToggle && !a.sdkSwap && !a.alsoSwaps, "модов нет — без выбора sdk и флажка");
+        CHECK(!a.uninstall && a.reinstall == Reinstall::None && !a.sdkRemove, "модов нет — других кнопок нет");
+        s.modAvailable = true;
+        a = decideGameActions(s);
+        CHECK(a.install && a.installModOnly && !a.nothingNeeded, "мод в списке — «Установить мод»");
+        CHECK(a.pickMod, "мод в списке, не выбран — сначала выбрать");
+        CHECK(!a.sdkChoice && a.debugToggle && !a.alsoSwaps && !a.sdkSwap, "мод — флажок есть, выбора sdk нет");
+        s.modChosen = s.modDiffers = true;
+        a = decideGameActions(s);
+        CHECK(a.installModOnly && !a.pickMod && !a.alsoSwaps, "мод выбран — «Установить мод» без подмены");
+        s.debugChosen = true;
+        a = decideGameActions(s);
+        CHECK(a.installModOnly && a.debugToggle, "отладочная с модом — та же кнопка");
+        s.debugChosen = false;
+        s.moduleInstalled = true;
+        a = decideGameActions(s);
+        CHECK(!a.install && !a.installModOnly && !a.nothingNeeded && a.uninstall, "модуль стоит — «Удалить установленное»");
+        CHECK(a.reinstall == Reinstall::OtherMod && a.sdkChoice && a.debugToggle, "модуль стоит — прежние правила");
+        s.modChosen = s.modDiffers = s.modAvailable = false;
+        a = decideGameActions(s);
+        CHECK(a.uninstall && a.reinstall == Reinstall::None && !a.nothingNeeded, "модуль стоит без модов — только удалить");
+        s.moduleInstalled = false;
+        // Любая работа — прежние правила.
+        s.moduleHasWork = true;
+        CHECK(!decideGameActions(s).nothingNeeded && decideGameActions(s).install, "модулю есть работа — «Установить»");
+        s.moduleHasWork = false;
+        s.sdkGaps = true;
+        CHECK(!decideGameActions(s).nothingNeeded, "пробелы sdk — не «ничего не нужно»");
+        s.sdkGaps = false;
+        s.zbicUnpack = true;
+        CHECK(!decideGameActions(s).nothingNeeded, "ZBIC — не «ничего не нужно»");
+        s.zbicUnpack = false;
+        s.swapNotNeeded = false;
+        CHECK(!decideGameActions(s).nothingNeeded, "подмена нужна — не «ничего не нужно»");
+        s.swapNotNeeded = true;
+        s.swapPresent = s.swapOurs = true;
+        a = decideGameActions(s);
+        CHECK(!a.nothingNeeded && a.sdkRemove && a.install, "наша подмена стоит — «Удалить подмену», прежние правила");
+        s.swapPresent = s.swapOurs = false;
+        s.diagReport = true;
+        a = decideGameActions(s);
+        CHECK(a.nothingNeeded && a.diagReport && a.collectLogs, "ничего не нужно — отчёты по-прежнему видны");
+    }
+    {   // Прежние случаи не задевает: по умолчанию подмена считается нужной.
+        GameActionsInput s;
+        const auto a = decideGameActions(s);
+        CHECK(a.install && !a.nothingNeeded && !a.installModOnly && a.sdkChoice && a.debugToggle, "по умолчанию — «Установить»");
+    }
     {   // Наша подмена стоит — только «Удалить подмену»; чужая — ничего.
         GameActionsInput s;
         s.swapPresent = s.swapOurs = true;

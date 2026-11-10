@@ -82,6 +82,8 @@ with Nintendo.
 спасибо **сообществу 4IFIR** — оно мотивирует, и оно лучшее: **[Telegram](https://t.me/kf4fr)** ·
 **[GitHub](https://github.com/rashevskyv/4ifir-checker/releases)**. Полный список — [`THANKS.md`](THANKS.md).
 
+<a href="https://t.me/kf4fr"><img src=".github/images/telegram-kf4fr.png" width="120" alt="QR: t.me/kf4fr"></a>
+
 **Лицензия:** GPL-3.0-or-later ([`LICENSE`](LICENSE)); модуль для игр в `nxredirect/` — GPL-2.0.
 **Отказ от ответственности:** на свой риск; не выходите в сеть с CFW и изменёнными играми — возможен бан. Проект не
 связан с Nintendo.

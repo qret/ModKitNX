@@ -142,9 +142,16 @@ void SettingsActivity::onContentAvailable() {
 
     // Благодарности
     auto* thanks = makeCard();
+    thanks->setId("thanks_card");
     thanks->addView(makeSectionTitle(tr("about/thanks_title")));
     thanks->addView(makeLabel(tr("about/thanks_lunya"), 20, colText()));
     thanks->addView(makeLabel("https://github.com/Langegen/TorrentShopNX", 16, colInfo(), true));
+    auto* duckbill = makeLabel(tr("about/thanks_duckbill"), 20, colText());
+    duckbill->setMarginTop(10);
+    thanks->addView(duckbill);
+    auto* chifir = makeLabel(tr("about/thanks_4ifir"), 20, colText());
+    chifir->setMarginTop(10);
+    thanks->addView(chifir);
     auto* others = makeLabel(tr("about/thanks_others"), 17, colSub());
     others->setMarginTop(10);
     thanks->addView(others);

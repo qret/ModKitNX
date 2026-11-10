@@ -14,6 +14,14 @@
 //   - Модуль не установлен — «Установить». Установлен — «Удалить установленное» (опасная), а «Переустановить» —
 //     только при причине: установка устарела, вид сборки (обычная / отладочная) не совпадает с флажком, выбран
 //     другой мод или другая sdk, чем в установке.
+//   - Игре ничего не нужно: sdk игры не новее прошивки (подмена не нужна), ZBIC снимать не нужно, модулю нечего
+//     исправлять из каталога и нет пробелов sdk, которые требуют модуля. Тогда, пока модуль не установлен и наша
+//     подмена не стоит:
+//       - модов нет — ни «Установить», ни выбора sdk, ни флажка «Отладочная сборка»; вместо них строка «Игре ничего
+//         не нужно» (nothingNeeded);
+//       - мод есть (выбран или есть в списке) — «Установить мод»: модуль и мод без подмены sdk, флажок «Отладочная
+//         сборка» остаётся, выбора sdk нет (installModOnly). Мод не выбран — кнопка просит выбрать его.
+//     Модуль или подмена уже стоят — кнопки как обычно (удалить, переустановить с причиной).
 //   - «Отчёт отладки» — только если у игры есть отчёт; «Собрать логи для отправки» — если есть отчёт модуля или
 //     отчёт Atmosphère о падении этой игры.
 #pragma once
@@ -31,8 +39,11 @@ struct GameActionsInput {
     bool sdkDiffers = false;        // выбранная sdk не та, что стоит нашей подменой (или подмены нет)
     bool swapPresent = false;       // в папке игры лежит exefs/sdk
     bool swapOurs = false;          // её положили мы (квитанция)
-    bool moduleHasWork = true;      // для выбранной sdk модулю есть что исправлять из каталога (неизвестно — да)
-    bool sdkGaps = false;           // у выбранной sdk есть пробелы, которые модуль не восполнит
+    bool moduleHasWork = true;      // модулю есть что исправлять из каталога для выбранной sdk, а без выбора — для
+                                    // текущей (неизвестно — да)
+    bool sdkGaps = false;           // у этой sdk есть пробелы, которые модуль не восполнит
+    bool swapNotNeeded = false;     // sdk игры не новее прошивки — подмена не нужна
+    bool modAvailable = false;      // в списке модов игры есть мод, который можно выбрать
     bool zbicUnpack = false;        // установка снимет ZBIC
     bool diagReport = false;        // у игры есть отчёт отладки
     bool crashReport = false;       // есть отчёт Atmosphère о падении этой игры
@@ -48,6 +59,11 @@ struct GameActions {
     bool sdkRemove = false;         // «Удалить подмену» (опасная)
     bool alsoSwaps = false;         // строка «Установка также подменит sdk на …»
     bool installSwapOnly = false;   // «Установить» = только подмена sdk (план «Подменить sdk»), строка «больше ничего»
+    bool nothingNeeded = false;     // игре ничего не нужно и модов нет: строка вместо «Установить»
+    bool installModOnly = false;    // «Установить мод»: модуль и мод, без подмены sdk
+    bool sdkChoice = true;          // показывать выбор sdk
+    bool debugToggle = true;        // показывать флажок «Отладочная сборка»
+    bool pickMod = false;           // «Установить мод», но мод не выбран — сначала выбрать его
     bool diagReport = false;        // «Отчёт отладки»
     bool collectLogs = false;       // «Собрать логи для отправки»
 };
@@ -60,8 +76,26 @@ inline bool onlySwapToDo(const GameActionsInput& s) {
 // Одной подмены sdk достаточно — модулю делать нечего и пробелов, которые он не восполнит, нет.
 inline bool swapIsEnough(const GameActionsInput& s) { return onlySwapToDo(s) && !s.sdkGaps; }
 
+// Игре ничего не нужно: подмена sdk не нужна и не стоит, ZBIC не снимается, модулю нечего исправлять и нечего
+// восполнять.
+inline bool gameNeedsNothing(const GameActionsInput& s) {
+    return s.swapNotNeeded && !s.swapPresent && !s.zbicUnpack && !s.moduleHasWork && !s.sdkGaps;
+}
+
 inline GameActions decideGameActions(const GameActionsInput& s) {
     GameActions a;
+    if (!s.moduleInstalled && gameNeedsNothing(s)) {
+        const bool mod = s.modChosen || s.modAvailable;
+        a.nothingNeeded = !mod;
+        a.installModOnly = mod;
+        a.install = mod;
+        a.pickMod = mod && !s.modChosen;
+        a.sdkChoice = false;
+        a.debugToggle = mod;
+        a.diagReport = s.diagReport;
+        a.collectLogs = s.diagReport || s.crashReport;
+        return a;
+    }
     const bool foreignSwap = s.swapPresent && !s.swapOurs;
     a.sdkRemove = s.swapPresent && s.swapOurs;
     a.sdkSwap = !s.swapPresent && swapIsEnough(s);

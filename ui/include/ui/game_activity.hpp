@@ -50,7 +50,7 @@ private:
     // «Отчёт отладки», «Собрать логи» — по mk::app::decideGameActions; перестраиваются при выборе sdk, мода и флажка.
     void refreshActions();
     mk::app::GameActionsInput actionsInput() const;
-    void startOperation(mk::app::OpKind op);
+    void startOperation(mk::app::OpKind op, bool withSdk = true);   // withSdk = false — без подмены sdk
     std::string selectedSdkPath() const;
     std::string selectedModPath() const;
 
@@ -68,6 +68,8 @@ private:
     std::vector<ChoiceRow*> modRows_;
     brls::Box* fixesBox_ = nullptr;
     brls::Box* sdkButtons_ = nullptr;   // «Подменить sdk» / «Удалить подмену» в блоке sdk
+    brls::Box* sdkChoiceBox_ = nullptr;   // вопрос и выбор sdk (скрывается, когда подмена не нужна)
+    brls::View* debugRow_ = nullptr;      // флажок «Отладочная сборка»
     brls::Box* actionsBox_ = nullptr;   // кнопки действий внизу страницы
     ReportsInfo reports_;               // отчёты этой игры на карте (findReports, в фоне)   // содержимое блока «Что исправит модуль» (перестраивается при выборе sdk)
     brls::View* firstFocus_ = nullptr;
