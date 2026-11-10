@@ -83,6 +83,8 @@ struct GapLine {
     std::string kind;                      // MISSING | STUB
     bool weak = false;                     // слабый импорт: rtld оставит ноль, игра может проверить сама
     std::vector<std::string> importers;
+    std::string readable;                  // имя для показа (nn::friends::StartFriendInvitation) — symbol_names.hpp
+    std::string online;                    // служба онлайн (friends, account…; symbol_names.hpp), пусто — не онлайн
 };
 struct FixForecastView {
     bool ok = false;                       // прогноз посчитан

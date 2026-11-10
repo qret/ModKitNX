@@ -6,6 +6,7 @@
 #include <mk/sdk.hpp>
 
 #include "app_types.hpp"
+#include "symbol_names.hpp"
 
 namespace mk::app {
 
@@ -34,7 +35,8 @@ inline FixForecastView fixesView(const mk::ForecastGame& game, const mk::Forecas
     if (game.own_sdk_ok)
         for (const auto& g : mk::sdk_gaps(game.all_imports, game.module_exports, sdk.exports, game.own_sdk)) {
             if (g.fix) continue;
-            v.gaps.push_back(GapLine{g.symbol, g.kind, g.weak, g.importers});
+            v.gaps.push_back(GapLine{g.symbol, g.kind, g.weak, g.importers, readableSymbol(g.symbol),
+                                     onlineServiceOfSymbol(g.symbol)});
         }
     return v;
 }

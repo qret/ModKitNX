@@ -2,6 +2,7 @@
 // ModKitNX — экран игры. См. ui/game_activity.hpp.
 #include "ui/game_activity.hpp"
 
+#include <algorithm>
 #include <cstdio>
 
 #include "app_model.hpp"
@@ -571,53 +572,91 @@ void GameActivity::addGaps(const mk::app::FixForecastView& f) {
         return;
     }
     if (f.gaps.empty()) return;
-    std::vector<std::string> strong, weak;
-    for (const auto& g : f.gaps) (g.weak ? weak : strong).push_back(g.symbol);
+    // Три группы: обязательные (жёлтая «Не восполнит»), необязательные — слабые ссылки, функции онлайн-служб
+    // (вызываются только в сети — нейтральная подкарточка). Имена — читаемые (symbol_names.hpp); полное имя .dynsym —
+    // в «Подробностях». Одинаковые читаемые имена (перегрузки) — одной строкой.
+    std::vector<const mk::app::GapLine*> strong, weak, online;
+    std::string services;   // «друзья, облачные сохранения» — какие службы задеты
+    for (const auto& g : f.gaps) {
+        (!g.online.empty() ? online : g.weak ? weak : strong).push_back(&g);
+        if (g.online.empty()) continue;
+        const std::string svc = tr("fixes/svc_" + g.online);
+        if (services.find(svc) == std::string::npos) services += (services.empty() ? "" : ", ") + svc;
+    }
     constexpr size_t kShow = 5;   // остальные — в «Подробностях»
-    auto list = [](const std::vector<std::string>& v) {
+    auto list = [](const std::vector<const mk::app::GapLine*>& v) {
+        std::vector<std::string> names;
+        for (const auto* g : v)
+            if (std::find(names.begin(), names.end(), g->readable) == names.end()) names.push_back(g->readable);
         std::string s;
-        for (size_t i = 0; i < v.size() && i < kShow; ++i) s += (i ? ", " : "") + v[i];
-        if (v.size() > kShow) s += trf("fixes/gaps_more", std::to_string(v.size() - kShow));
+        for (size_t i = 0; i < names.size() && i < kShow; ++i) s += (i ? ", " : "") + names[i];
+        if (names.size() > kShow) s += trf("fixes/gaps_more", std::to_string(names.size() - kShow));
         return s;
     };
-    // Жёлтая — обязательные функции; только необязательные (слабые ссылки) — серая.
-    brls::Box* sc = nullptr;
-    if (!strong.empty()) {
-        sc = makeSubCard(Tone::Warn, icon::kWarn, trf("fixes/sc_gaps", std::to_string(strong.size())));
-        addSubLine(sc, list(strong), colText(), 17);
-        addSubLine(sc, tr("fixes/gaps_may_crash"), colText(), 17);
-        if (!weak.empty()) addSubLine(sc, trf("fixes/gaps_weak_more", std::to_string(weak.size())), colSub(), 17);
-    } else {
-        sc = makeSubCard(Tone::Neutral, icon::kInfo, trf("fixes/sc_gaps_weak", std::to_string(weak.size())), 19);
-        addSubLine(sc, list(weak), colText(), 17);
-        addSubLine(sc, tr("fixes/gaps_weak_note"), colSub(), 17);
-    }
-    // Полный список — по блоку на функцию: имя (длинное переносится посимвольно), что с ней в sdk, кто импортирует.
-    // Обязательные — жёлтые, необязательные (слабые ссылки) — серые.
+
+    // Полный список — по блоку на функцию: читаемое имя, полное имя .dynsym (длинное переносится посимвольно), что с
+    // ней в sdk, кто импортирует. Обязательные — жёлтые, необязательные и онлайн — серые; порядок — как подкарточки.
     TextSheet sheet;
     sheet.title = tr("fixes/gaps_details");
     sheet.headline = trf("fixes/gaps_details_head", ver);
-    for (const auto& g : f.gaps) {
-        std::string who;
-        for (const auto& m : g.importers) who += (who.empty() ? "" : ", ") + m;
-        SheetBlock blk;
-        blk.title = g.symbol;
-        blk.tone = g.weak ? Tone::Neutral : Tone::Warn;
-        blk.lines = {tr(g.kind == "STUB" ? "fixes/gaps_k_stub" : "fixes/gaps_k_missing") +
-                         (g.weak ? ", " + tr("fixes/gaps_k_weak") : std::string()),
-                     trf("fixes/tech_import", who.empty() ? "—" : who)};
-        sheet.blocks.push_back(std::move(blk));
-    }
-    sheet.note = (weak.empty() ? std::string() : tr("fixes/gaps_weak_note") + "\n\n") + tr("fixes/gaps_details_note");
-    auto* details = makeButton(tr("fixes/gaps_details"), &brls::BUTTONSTYLE_BORDERED, [sheet] { openTextSheet(sheet); });
-    details->setId("gaps_details_btn");
-    details->setHeight(48);
-    addSubView(sc, details);
-    details->setMarginTop(10);
-    fixesBox_->addView(sc);
+    for (const auto* grp : {&strong, &weak, &online})
+        for (const auto* g : *grp) {
+            std::string who;
+            for (const auto& m : g->importers) who += (who.empty() ? "" : ", ") + m;
+            SheetBlock blk;
+            blk.title = g->readable;
+            blk.tone = (g->weak || !g->online.empty()) ? Tone::Neutral : Tone::Warn;
+            std::string kind = tr(g->kind == "STUB" ? "fixes/gaps_k_stub" : "fixes/gaps_k_missing");
+            if (g->weak) kind += ", " + tr("fixes/gaps_k_weak");
+            if (!g->online.empty()) kind += ", " + tr("fixes/svc_" + g->online);
+            blk.lines = {g->symbol, kind, trf("fixes/tech_import", who.empty() ? "—" : who)};
+            sheet.blocks.push_back(std::move(blk));
+        }
+    std::string note;
+    if (!online.empty()) note += trf("fixes/gaps_online_line", services) + "\n\n";
+    if (!weak.empty()) note += tr("fixes/gaps_weak_note") + "\n\n";
+    sheet.note = note + tr("fixes/gaps_details_note");
+    auto addDetails = [&sheet](brls::Box* sc, const char* id) {
+        auto* details = makeButton(tr("fixes/gaps_details"), &brls::BUTTONSTYLE_BORDERED, [sheet] { openTextSheet(sheet); });
+        details->setId(id);
+        details->setHeight(48);
+        addSubView(sc, details);
+        details->setMarginTop(10);
+    };
 
-    // Совет: отладочная сборка покажет, на какой функции игра остановится, а «Собрать логи» даст отчёт для issue.
-    if (!debug_) {
+    // Жёлтая — обязательные функции не онлайн-служб; только необязательные (слабые ссылки) — серая.
+    bool detailsShown = false;
+    if (!strong.empty()) {
+        auto* sc = makeSubCard(Tone::Warn, icon::kWarn, trf("fixes/sc_gaps", std::to_string(strong.size())));
+        addSubLine(sc, list(strong), colText(), 17);
+        addSubLine(sc, tr("fixes/gaps_may_crash"), colText(), 17);
+        if (!weak.empty()) addSubLine(sc, trf("fixes/gaps_weak_more", std::to_string(weak.size())), colSub(), 17);
+        addDetails(sc, "gaps_details_btn");
+        detailsShown = true;
+        fixesBox_->addView(sc);
+    } else if (!weak.empty()) {
+        auto* sc = makeSubCard(Tone::Neutral, icon::kInfo, trf("fixes/sc_gaps_weak", std::to_string(weak.size())), 19);
+        addSubLine(sc, list(weak), colText(), 17);
+        addSubLine(sc, tr("fixes/gaps_weak_note"), colSub(), 17);
+        addDetails(sc, "gaps_details_btn");
+        detailsShown = true;
+        fixesBox_->addView(sc);
+    }
+    // Онлайн-службы — спокойно, нейтральной подкарточкой: на запуск не влияют. Что делать, если игра всё же не
+    // запустится, — здесь же (отдельный «Совет» не нужен); есть жёлтая — шаги скажет её «Совет».
+    if (!online.empty()) {
+        auto* sc = makeSubCard(Tone::Neutral, icon::kInfo, trf("fixes/sc_gaps_online", std::to_string(online.size())), 19);
+        addSubLine(sc, list(online), colText(), 17);
+        addSubLine(sc, trf("fixes/gaps_online_line", services), colText(), 17);
+        if (strong.empty() && !debug_) addSubLine(sc, tr("fixes/gaps_online_if"), colSub(), 17);
+        if (!detailsShown) addDetails(sc, "gaps_details_btn");
+        fixesBox_->addView(sc);
+    }
+
+    // Совет — только при жёлтой «Не восполнит» (обязательные функции не онлайн-служб): по шагам и не заранее —
+    // сначала просто запустить; отладочная сборка — только если игра упадёт. Слабые ссылки игра обычно проверяет
+    // сама, онлайн-функции без сети не вызываются — там совет был бы лишним шумом.
+    if (!strong.empty() && !debug_) {
         auto* tip = makeSubCard(Tone::Info, icon::kTip, tr("fixes/tip_title"));
         addSubLine(tip, tr("fixes/gaps_debug_tip"), colText(), 17);
         fixesBox_->addView(tip);
@@ -712,16 +751,19 @@ mk::app::GameActionsInput GameActivity::actionsInput() const {
                                                                                        : l.version == d_.sdk.swapVersion);
         s.sdkDiffers = !same;
     }
-    // Есть ли модулю работа для выбранной sdk: своя функция у нужного игре, пробелы sdk; не посчитано — «да».
+    // Есть ли модулю работа для выбранной sdk: своя функция у нужного игре (не посчитано — «да»); отдельно — пробелы
+    // sdk, которые модуль не восполнит (не проверено — считаем, что есть: «Подменить sdk» не предлагаем).
     s.moduleHasWork = true;
+    s.sdkGaps = true;
     const auto& b = d_.fixes;
-    if (haveChoice && b.gameOk && b.ownSdkOk && sdkChoice_ < static_cast<int>(b.bySdk.size())) {
+    if (haveChoice && b.gameOk && sdkChoice_ < static_cast<int>(b.bySdk.size())) {
         const auto& f = b.bySdk[sdkChoice_];
         if (f.ok) {
-            bool work = !f.gaps.empty();
+            bool work = false;
             for (const auto& l : f.fixes)
                 if (!l.importers.empty() && l.choice == "own") work = true;
             s.moduleHasWork = work;
+            s.sdkGaps = !b.ownSdkOk || !f.gaps.empty();
         }
     }
     s.zbicUnpack = d_.zbicUnpack && !d_.zbicUnpackedOurs;
@@ -750,8 +792,9 @@ void GameActivity::refreshActions() {
 
     actionsBox_->clearViews();
     // Выбор sdk виден и у кнопки установки: подмена входит в «Установить» / «Переустановить».
-    if (a.alsoSwaps && sdkChoice_ >= 0 && sdkChoice_ < static_cast<int>(sdk_.size())) {
-        auto* n = makeLabel(trf("actions/also_swap", sdk_[sdkChoice_].version), 17, colInfo());
+    if ((a.alsoSwaps || a.installSwapOnly) && sdkChoice_ >= 0 && sdkChoice_ < static_cast<int>(sdk_.size())) {
+        auto* n = makeLabel(trf(a.installSwapOnly ? "actions/swap_only" : "actions/also_swap", sdk_[sdkChoice_].version),
+                            17, colInfo());
         n->setMarginTop(8);
         actionsBox_->addView(n);
     }
@@ -759,7 +802,13 @@ void GameActivity::refreshActions() {
     row->setMarginTop(8);
     brls::View* main = nullptr;
     if (a.install) {
-        auto* install = makeButton(tr("actions/install"), &brls::BUTTONSTYLE_PRIMARY, [this] {
+        // Делать, кроме подмены, нечего (пробелы модуль не закроет) — «Установить» = план «Подменить sdk».
+        const bool swapOnly = a.installSwapOnly;
+        auto* install = makeButton(tr("actions/install"), &brls::BUTTONSTYLE_PRIMARY, [this, swapOnly] {
+            if (swapOnly) {
+                startOperation(OpKind::SdkSwap);
+                return;
+            }
             if (!d_.exefsOpened && d_.exefs.needKeys) {
                 brls::Application::pushActivity(new NoKeysActivity());
                 return;

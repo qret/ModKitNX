@@ -76,3 +76,9 @@ add_executable(game_actions_tests game_actions_tests.cpp)
 target_include_directories(game_actions_tests PRIVATE ${REPO}/source)
 target_compile_options(game_actions_tests PRIVATE -Wall -Wextra)
 add_test(NAME game_actions COMMAND game_actions_tests)
+
+# Читаемые имена функций sdk и онлайн-службы (source/symbol_names.hpp) — чистые функции.
+add_executable(symbol_names_tests symbol_names_tests.cpp)
+target_include_directories(symbol_names_tests PRIVATE ${REPO}/source)
+target_compile_options(symbol_names_tests PRIVATE -Wall -Wextra)
+add_test(NAME symbol_names COMMAND symbol_names_tests)

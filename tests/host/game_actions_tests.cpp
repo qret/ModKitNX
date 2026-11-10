@@ -52,6 +52,42 @@ int main() {
         const auto a = decideGameActions(s);
         CHECK(!a.sdkSwap && !a.alsoSwaps, "sdk не выбрана — ни кнопки, ни строки");
     }
+    {   // Gurei: каталогу делать нечего, ZBIC нет, мод не выбран, но у sdk есть пробелы, которые модуль не восполнит
+        // (nn::friends). «Подменить sdk» не показывается, «Установить» = только подмена sdk (план «Подменить sdk»).
+        GameActionsInput s;
+        s.sdkChosen = s.sdkDiffers = true;
+        s.moduleHasWork = false;
+        s.sdkGaps = true;
+        auto a = decideGameActions(s);
+        CHECK(!a.sdkSwap, "неустранимые пробелы — без «Подменить sdk»");
+        CHECK(a.install && a.installSwapOnly, "неустранимые пробелы — «Установить» = только подмена");
+        CHECK(!a.alsoSwaps, "только подмена — строки «также подменит» нет");
+        s.debugChosen = true;
+        a = decideGameActions(s);
+        CHECK(a.install && !a.installSwapOnly && a.alsoSwaps, "отладочная сборка — ставится модуль, подмена в нём");
+        s.debugChosen = false;
+        s.moduleHasWork = true;
+        a = decideGameActions(s);
+        CHECK(!a.installSwapOnly && a.alsoSwaps, "модулю есть работа — полная установка");
+        s.moduleHasWork = false;
+        s.zbicUnpack = true;
+        CHECK(!decideGameActions(s).installSwapOnly, "ZBIC — полная установка");
+        s.zbicUnpack = false;
+        s.modChosen = true;
+        CHECK(!decideGameActions(s).installSwapOnly, "выбран мод — полная установка");
+        s.modChosen = false;
+        s.swapPresent = s.swapOurs = true;
+        a = decideGameActions(s);
+        CHECK(!a.installSwapOnly && a.sdkRemove, "наша подмена уже стоит — «Установить» полная, есть «Удалить подмену»");
+        s.swapPresent = s.swapOurs = false;
+        s.sdkGaps = false;
+        a = decideGameActions(s);
+        CHECK(a.sdkSwap && !a.installSwapOnly, "без пробелов — «Подменить sdk», «Установить» как прежде");
+        s.sdkGaps = true;
+        s.moduleInstalled = true;
+        a = decideGameActions(s);
+        CHECK(!a.install && !a.installSwapOnly, "модуль стоит — «Установить» нет");
+    }
     {   // Наша подмена стоит — только «Удалить подмену»; чужая — ничего.
         GameActionsInput s;
         s.swapPresent = s.swapOurs = true;

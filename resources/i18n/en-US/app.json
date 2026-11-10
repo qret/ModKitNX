@@ -160,24 +160,34 @@
         "sc_gaps_weak": "Optional, missing in this sdk — {0}",
         "gaps_weak_note": "The game refers to them optionally (weak reference). Usually the game checks for such a function itself and does without it, but there is no guarantee.",
         "tip_title": "Tip",
-        "gaps_debug_tip": "Tick “Debug build” before installing. If the game crashes or shows a black screen, “Debug report” shows where it stopped, and “Collect logs to send” prepares an archive — send it to the 4IFIR group on Telegram (t.me/kf4fr), so the missing function can be added to the module.",
+        "gaps_debug_tip": "First just launch the game. If it crashes or shows a black screen, tick “Debug build”, install again, launch the game and send “Collect logs to send” to the 4IFIR group on Telegram (t.me/kf4fr).",
         "gaps_unchecked": "Could not check which functions the game will miss in this sdk: the game's own sdk could not be read.",
         "gaps_details": "Details",
         "gaps_details_head": "Functions that sdk {0} lacks and the module does not supply:",
         "gaps_k_missing": "missing in sdk",
         "gaps_k_stub": "empty stub in sdk",
         "gaps_k_weak": "weak reference",
-        "gaps_details_note": "Names are as in the game's symbol table. For the module to supply a function, it has to be added to the module's fix catalog (nxr_autofix_catalog.h)."
+        "gaps_details_note": "Under each readable name is the full name from the game's symbol table. For the module to supply a function, it has to be added to the module's fix catalog (nxr_autofix_catalog.h).",
+        "sc_gaps_online": "Online service functions — {0}",
+        "gaps_online_line": "These belong to online services ({0}). They do not affect start-up — the game should launch.",
+        "gaps_online_if": "If it does not launch, tick “Debug build”, install again, launch the game and send “Collect logs to send” to the 4IFIR group on Telegram (t.me/kf4fr).",
+        "svc_friends": "friends",
+        "svc_account": "online account",
+        "svc_olsc": "cloud saves",
+        "svc_npns": "notifications",
+        "svc_online_play": "online play",
+        "svc_ec": "eShop",
+        "svc_news": "news"
     },
     "mods": {
         "title": "Mods for the game",
         "question": "Which mod to install with the module?",
-        "choice_none": "No mod (nxredirect module only)",
+        "choice_none": "No mod",
         "f_romfs": "romfs",
         "f_module": "own module",
         "f_ips": "IPS",
         "f_in_contents": "already in atmosphere/contents",
-        "none_found": "No mods for this game — only the nxredirect module with its fixes will be installed; without a mod the game simply starts. To install a mod, put it into {0}.",
+        "none_found": "No mods for this game. To add one, put it into {0}.",
         "in_contents_info": "Already in {0} (installed earlier): romfs. The app leaves it alone."
     },
     "actions": {
@@ -187,7 +197,8 @@
         "also_swap": "Installing also swaps the sdk to {0}.",
         "why_stale": "The module on the card differs from the receipt — install it again.",
         "why_other_mod": "A different mod is selected than the installed one — “Reinstall” puts it in.",
-        "why_other_sdk": "A different sdk is selected than the one swapped in now — “Reinstall” swaps it."
+        "why_other_sdk": "A different sdk is selected than the one swapped in now — “Reinstall” swaps it.",
+        "swap_only": "Installing will swap the sdk for {0} — nothing else is needed."
     },
     "op": {
         "done_toast": "{0}: done. The changes apply the next time the game starts.",
