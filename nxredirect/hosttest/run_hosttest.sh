@@ -46,7 +46,7 @@ if [ "${NXR_KEEP_TEMP:-0}" = "0" ] || [ -z "${NXR_KEEP_TEMP:-}" ]; then
 else
     trap 'echo "NXR_KEEP_TEMP: модули игры оставлены: $EXEFS_DIR"' EXIT
 fi
-cp -f "$HERE/symfind_test.cpp" "$HERE/path_test.cpp" "$WORK/"
+cp -f "$HERE/symfind_test.cpp" "$HERE/path_test.cpp" "$HERE/bigmod_test.cpp" "$WORK/"
 cp -f "$HERE/../src/nxr_symfind.hpp" "$HERE/../src/nxr_path.hpp" "$WORK/"
 
 # Третий аргумент — НАМЕРЕННАЯ ПОЛОМКА логики (негативные пробы самого теста).
@@ -74,7 +74,13 @@ case "$ONE_BREAK" in
         ;;
     mod0-limit)
         # Как было до исправления №5: MOD0 ищется только рядом с началом модуля.
-        sed -i 's/maxMod0Offset = 0x4000000/maxMod0Offset = 0x1000/' "$WORK/nxr_symfind.hpp"
+        sed -i 's/maxMod0Offset = 0x100000000ull/maxMod0Offset = 0x1000/' "$WORK/nxr_symfind.hpp"
+        grep -q 'maxMod0Offset = 0x1000;' "$WORK/nxr_symfind.hpp" || { echo "поломка mod0-limit не легла"; exit 2; }
+        ;;
+    mod0-64mb)
+        # Как было до 11.11.2026: предел 64 МБ. main Biped 2 (~121 МБ) не распознаётся.
+        sed -i 's/maxMod0Offset = 0x100000000ull/maxMod0Offset = 0x4000000/' "$WORK/nxr_symfind.hpp"
+        grep -q 'maxMod0Offset = 0x4000000;' "$WORK/nxr_symfind.hpp" || { echo "поломка mod0-64mb не легла"; exit 2; }
         ;;
     no-mapped-check)
         # Проверка отображённости памяти отключена: разбор уйдёт в пустоту.
@@ -169,6 +175,11 @@ echo "=== path_test (пути; модули игры не нужны) ==="
 # -pthread: проба реестра romfs из нескольких потоков.
 $CXX $CXXFLAGS -pthread -o "$WORK/path_test" "$WORK/path_test.cpp"
 "$WORK/path_test"
+
+echo
+echo "=== bigmod_test (модуль больше 64 МБ; модули игры не нужны) ==="
+$CXX $CXXFLAGS -o "$WORK/bigmod_test" "$WORK/bigmod_test.cpp"
+"$WORK/bigmod_test"
 
 echo
 echo "=== symfind_test (поиск символов в настоящих модулях игры) ==="

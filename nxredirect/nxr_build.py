@@ -146,6 +146,9 @@ BASE_C_FLAGS = "-Wno-error=non-c-typedef-for-linkage"
 # Намеренные поломки логики, которые понимает run_hosttest.sh. Каждая обязана
 # сделать хост-тест КРАСНЫМ — иначе тест «всегда зелёный».
 HOSTTEST_BREAKS = ["mod0-limit", "no-mapped-check", "wrong-perm",
+                   # предел MOD0 64 МБ, как до 11.11.2026 (main Biped 2 ~121 МБ):
+                   # краснеет bigmod_test, файлы игры не нужны.
+                   "mod0-64mb",
                    # общее имя "sd" (конфликт 0x7802 с UltraCam),
                    # перевёрнутое правило rtld, слот импорта без сравнения имени.
                    "shared-mount-name", "rtld-last-wins", "import-slot-any-symbol",
