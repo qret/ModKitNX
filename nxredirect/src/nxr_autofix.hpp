@@ -739,6 +739,7 @@ struct PassportFacts {
     std::uint32_t calls[FixCount] = {};
     int           nvrmPath      = 0;       /* nxr::compat::NvrmPath, 0 — не считался */
     const char*   nvrmPathText  = nullptr;
+    const char*   roFixText     = nullptr;   /* поиск символов nn::ro (nxr_rofix.hpp) */
 };
 
 inline constexpr char PassportName[] = "nxredirect-passport.txt";
@@ -827,6 +828,11 @@ inline void FormatPassport(Buf& b, const PassportFacts& f) {
     if (f.nvrmPathText != nullptr) {
         b.Add("  путь nvrm_query к игре: ");
         b.Add(f.nvrmPathText);
+        b.Line();
+    }
+    if (f.roFixText != nullptr) {
+        b.Add("  поиск символов nn::ro: ");
+        b.Add(f.roFixText);
         b.Line();
     }
 }

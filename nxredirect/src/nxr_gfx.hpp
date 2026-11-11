@@ -460,8 +460,9 @@ namespace gfx {
      * SetAllocator с Result 0x327602.
      * Ещё +3: nn::fs::MountRom (без кеша и с кешем) и nn::fs::Unmount —
      * модуль сам узнаёт имя точки romfs игры (nxr::RomMounts, nxr_path.hpp).
+     * Ещё +1: внутренний поиск символа nn::ro старой sdk (nxr_rofix.hpp, Biped 2).
      */
-    constexpr int HooksOutsideGfx = 6;
+    constexpr int HooksOutsideGfx = 7;
 
     /* ------------------------------------------------------------------ */
     /* ЦЕЛИ УЗКОЙ ПРОБЫ БЛОКИРОВОК (ШАГ-8)                                */

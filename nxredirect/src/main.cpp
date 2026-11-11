@@ -96,6 +96,7 @@
  * по настоящим модулям игры со смоделированной раскладкой памяти.
  */
 #include "nxr_symfind.hpp"
+#include "nxr_rofix.hpp"   /* поиск nn::ro в старой sdk без DT_GNU_HASH */
 
 /*
  * Построение пути мода и подмена префикса тоже вынесены отдельно и тоже прогоняются
@@ -224,6 +225,21 @@ namespace {
 
     /* Один экземпляр на всё: FindSymbolAnywhere принимает ссылку. */
     MemQuery g_MemQuery {};
+
+#ifndef NXR_NO_AUTOFIX
+    /* Поиск символов nn::ro в старой sdk (nxr_rofix.hpp, ApplyRoFix):
+       0 — не проверяли, 1 — не нужно, 2 — поставлен, 3 — образец не совпал. */
+    int g_RoFix = 0;
+
+    const char* RoFixText() {
+        switch (g_RoFix) {
+            case 1: return "не нужно (sdk знает DT_GNU_HASH или у всех модулей есть DT_HASH)";
+            case 2: return "СВОЙ — sdk ищет только по DT_HASH, у модулей игры его нет: поиск nn::ro подменён";
+            case 3: return "НЕ ПОСТАВЛЕН — код nn::ro::LookupModuleSymbol не узнан";
+            default: return nullptr;
+        }
+    }
+#endif
 
     /* Поиск символа во ВСЕХ модулях процесса. Возвращает адрес или 0. */
     uintptr_t FindSymbolAnywhere(const char* name) {
@@ -1350,6 +1366,7 @@ namespace {
             f.nvrmPathText = g_Nvrm.path != 0
                 ? nxr::compat::NvrmPathText(static_cast<nxr::compat::NvrmPath>(g_Nvrm.path))
                 : nullptr;
+            f.roFixText = RoFixText();
             g_Text.m_Len = 0;
             FormatPassport(g_Text, f);
             if (PassportPath(g_Path, sizeof(g_Path), g_SdPrefix, g_SdPrefixLen) == 0) {
@@ -1617,6 +1634,53 @@ void InstallMountHooks() {
     g_MountHooksInstalled = true;
 }
 
+#ifndef NXR_NO_AUTOFIX
+/*
+ * ПОИСК СИМВОЛОВ nn::ro В СТАРОЙ sdk (nxr_rofix.hpp). sdk 19.3.13 ищет символ в
+ * модуле только по DT_HASH; модули игры на SDK 20+ бывают только с DT_GNU_HASH —
+ * nn::ro::LookupSymbol падал (Biped 2). Подменяем внутреннюю функцию поиска
+ * одного модуля: модуль с DT_HASH — оригинал, без — свой перебор .dynsym.
+ * Ставится, только если функция старая И есть модуль без DT_HASH. Трамплин — один
+ * (бюджет: nxr_gfx.hpp, HooksOutsideGfx).
+ */
+HOOK_DEFINE_TRAMPOLINE(RoLookupHook) {
+
+    static const nxr::Sym* Callback(const void* obj, const char* name) {
+        const std::uint64_t base = obj != nullptr
+            ? *reinterpret_cast<const std::uint64_t*>(
+                  static_cast<const std::uint8_t*>(obj) + nxr::rofix::ModuleObjectBase)
+            : 0;
+        if (base == 0 || nxr::rofix::HasSysvHash(g_MemQuery, base)) {
+            return Orig(obj, name);
+        }
+        return nxr::rofix::FindDefinedSym(g_MemQuery, base, name);
+    }
+
+};
+
+void ApplyRoFix() {
+    const uintptr_t lms = FindSymbolAnywhere(nxr::rofix::SymLookupModuleSymbol);
+    if (lms == 0) {
+        g_RoFix = 1;   /* nn::ro нет — чинить нечего */
+        return;
+    }
+    const std::uint64_t f = nxr::rofix::FindInternalLookup(
+        reinterpret_cast<const std::uint32_t*>(lms), lms);
+    if (f == 0) {
+        g_RoFix = 3;
+        return;
+    }
+    if (!nxr::rofix::IsSysvOnly(reinterpret_cast<const std::uint32_t*>(static_cast<uintptr_t>(f))) ||
+        !nxr::rofix::AnyModuleWithoutSysvHash(g_MemQuery)) {
+        g_RoFix = 1;
+        return;
+    }
+    RoLookupHook::InstallAtPtr(static_cast<uintptr_t>(f));
+    g_RoFix = 2;
+}
+
+#endif
+
 /*
  * Хук точки входа игры. К этому моменту загружены и проинициализированы все модули,
  * включая `sdk`, поэтому адреса функций nnSdk уже можно найти по символу.
@@ -1669,6 +1733,11 @@ HOOK_DEFINE_TRAMPOLINE(NnMainHook) {
             g_HaveSetAllocator = true;
             SetAllocatorHook::InstallAtPtr(setAllocator);
         }
+
+#ifndef NXR_NO_AUTOFIX
+        /* nn::ro в старой sdk: до кода игры, которая зовёт LookupSymbol. */
+        ApplyRoFix();
+#endif
 
 #ifdef NXR_COMPAT_NVRM_QUERY
         /*
