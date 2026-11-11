@@ -170,7 +170,32 @@ int main() {
         Check(!AnyModuleWithoutSysvHash(sim), "у всех модулей DT_HASH — перехват не нужен");
     }
 
-    const int kMinChecks = 17;
+    std::printf("[4] снимок модулей: перехват не зовёт ядро\n");
+    {
+        Build(buf, false);
+        Sim sim = Map(buf);
+        Snapshot snap {};
+        TakeSnapshot(sim, &snap);
+        Check(snap.n == 1 && snap.anyWithoutHash, "снимок: один модуль, без DT_HASH");
+        /* После снимка карта памяти «недоступна» — как ядро, отказавшее внутри перехвата. */
+        sim.regions.clear();
+        const ModuleTables* m = snap.Find(base);
+        Check(m != nullptr && !m->hasHash, "модуль найден по базе без обращения к ядру");
+        const nxr::Sym* foo = m != nullptr ? FindDefinedSym(*m, "foo") : nullptr;
+        Check(foo != nullptr && foo->st_value == 0x40, "«foo» по снимку: отсевы те же");
+        Check(m != nullptr && FindDefinedSym(*m, "baz") == nullptr, "нет такого — nullptr");
+        Check(snap.Find(base + 0x1000) == nullptr, "модуля нет в снимке — nullptr (перехват уйдёт в оригинал)");
+    }
+    {
+        Build(buf, true);
+        Sim sim = Map(buf);
+        Snapshot snap {};
+        TakeSnapshot(sim, &snap);
+        Check(snap.n == 1 && !snap.anyWithoutHash && snap.mods[0].hasHash,
+              "снимок с DT_HASH — перехват не нужен");
+    }
+
+    const int kMinChecks = 23;
     if (g_Ran < kMinChecks) {
         std::printf("КРАСНО: проверок выполнено %d из %d\n", g_Ran, kMinChecks);
         return 2;

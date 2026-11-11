@@ -746,6 +746,7 @@ static void test_logs() {
     // сборка
     w(sd + "/atmosphere/contents/" + T + "/nxredirect.json", "{\n  \"game_tid\": \"" + T + "\"\n}\n");
     w(sd + "/atmosphere/contents/" + T + "/exefs/main", "game code");
+    w(sd + "/atmosphere/contents/" + T + "/nxredirect-passport.txt", "паспорт модуля\r\n");
     w(sd + "/switch/prod.keys", "secret");
     L::BundleInput in;
     in.tid = T;
@@ -760,8 +761,9 @@ static void test_logs() {
     std::vector<std::string> names;
     for (auto& it : b.items) names.push_back(it.name);
     const std::vector<std::string> want = {"diag-0007.txt", "diag-0006.txt", "diag-0005.txt", "diag-0004.txt", "diag-0003.txt",
-                                           "gfx-0007.txt", "crash-report_without_tid.log", "passport.txt", "nxredirect.json"};
-    CHECK(names == want, "сборка: отчёты diag/gfx, последний crash, паспорт, квитанция — ничего лишнего");
+                                           "gfx-0007.txt", "crash-report_without_tid.log", "passport-module.txt",
+                                           "passport.txt", "nxredirect.json"};
+    CHECK(names == want, "сборка: отчёты diag/gfx, последний crash, оба паспорта (модуля и приложения), квитанция — ничего лишнего");
     CHECK(b.inner == "Well Dweller ремастер v1.0.3" && b.zip == logs + "Well Dweller ремастер v1.0.3 20261109-153000.zip" &&
               b.folder == logs + "Well Dweller ремастер v1.0.3/",
           "сборка: имя папки (безопасное для FAT) и архива с датой");
@@ -782,7 +784,8 @@ static void test_logs() {
         cnt++;
     }
     CHECK(zok && cnt == want.size() && r.files == want.size() && firstName == b.inner + "/diag-0007.txt" &&
-              sfs.is_file(b.folder + "crash-report_without_tid.log") && rd(b.folder + "passport.txt") == in.passport_text,
+              sfs.is_file(b.folder + "crash-report_without_tid.log") && rd(b.folder + "passport.txt") == in.passport_text &&
+              rd(b.folder + "passport-module.txt") == "паспорт модуля\r\n",
           "архив: store, имена UTF-8, CRC сходится, всё внутри папки игры; копии лежат в папке");
     bool leak = false;
     for (size_t i = 0; i + 6 <= z.size(); ++i) leak |= std::equal(z.begin() + i, z.begin() + i + 6, "secret");

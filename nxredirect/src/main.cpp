@@ -1643,6 +1643,11 @@ void InstallMountHooks() {
  * Ставится, только если функция старая И есть модуль без DT_HASH. Трамплин — один
  * (бюджет: nxr_gfx.hpp, HooksOutsideGfx).
  */
+namespace {
+    /* Снимок модулей для перехвата: внутри него ядро звать нельзя (nxr_rofix.hpp). */
+    nxr::rofix::Snapshot g_RoSnapshot {};
+}
+
 HOOK_DEFINE_TRAMPOLINE(RoLookupHook) {
 
     static const nxr::Sym* Callback(const void* obj, const char* name) {
@@ -1650,10 +1655,11 @@ HOOK_DEFINE_TRAMPOLINE(RoLookupHook) {
             ? *reinterpret_cast<const std::uint64_t*>(
                   static_cast<const std::uint8_t*>(obj) + nxr::rofix::ModuleObjectBase)
             : 0;
-        if (base == 0 || nxr::rofix::HasSysvHash(g_MemQuery, base)) {
+        const nxr::rofix::ModuleTables* m = g_RoSnapshot.Find(base);
+        if (m == nullptr || m->hasHash) {
             return Orig(obj, name);
         }
-        return nxr::rofix::FindDefinedSym(g_MemQuery, base, name);
+        return nxr::rofix::FindDefinedSym(*m, name);
     }
 
 };
@@ -1670,8 +1676,12 @@ void ApplyRoFix() {
         g_RoFix = 3;
         return;
     }
-    if (!nxr::rofix::IsSysvOnly(reinterpret_cast<const std::uint32_t*>(static_cast<uintptr_t>(f))) ||
-        !nxr::rofix::AnyModuleWithoutSysvHash(g_MemQuery)) {
+    if (!nxr::rofix::IsSysvOnly(reinterpret_cast<const std::uint32_t*>(static_cast<uintptr_t>(f)))) {
+        g_RoFix = 1;
+        return;
+    }
+    nxr::rofix::TakeSnapshot(g_MemQuery, &g_RoSnapshot);
+    if (!g_RoSnapshot.anyWithoutHash) {
         g_RoFix = 1;
         return;
     }

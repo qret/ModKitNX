@@ -162,8 +162,85 @@ namespace nxr::rofix {
     }
 
     /*
+     * СНИМОК МОДУЛЕЙ. Внутри перехвата НЕЛЬЗЯ звать ядро: на консоли (Biped 2,
+     * поиск пришёл через nn::ro::LoadModule -> detail::LookupGlobalManual)
+     * svcQueryMemory из перехвата дал «Undefined System Call 0x06», хотя при старте
+     * игры тот же вызов работает. Поэтому всё, что нужно перехвату, снимается
+     * заранее (ApplyRoFix, из хука nnMain): база, .dynsym, .dynstr, число символов
+     * и есть ли DT_HASH. Перехват только читает снимок; модуля нет в снимке
+     * (подгружен позже) — оригинал sdk, как без исправления.
+     */
+    struct ModuleTables {
+        std::uint64_t base   = 0;
+        std::uint64_t symtab = 0;
+        std::uint64_t strtab = 0;
+        std::uint64_t strsz  = 0;
+        std::uint64_t count  = 0;
+        bool          hasHash = false;
+    };
+
+    struct Snapshot {
+        static constexpr int Max = 32;   /* rtld, main, subsdk0..9, sdk, внедрённые — с запасом */
+        ModuleTables mods[Max] {};
+        int          n = 0;
+        bool         anyWithoutHash = false;
+
+        const ModuleTables* Find(std::uint64_t base) const {
+            for (int i = 0; i < n; ++i) {
+                if (mods[i].base == base) {
+                    return &mods[i];
+                }
+            }
+            return nullptr;
+        }
+    };
+
+    template <typename Query>
+    inline void TakeSnapshot(Query& query, Snapshot* s) {
+        s->n = 0;
+        s->anyWithoutHash = false;
+        ForEachModule(query, [&](std::uint64_t base, const Dyn* dyn) {
+            Tables t {};
+            if (s->n < Snapshot::Max && ResolveTables(query, base, dyn, &t)) {
+                ModuleTables& m = s->mods[s->n++];
+                m.base = base;
+                m.symtab = t.symtab;
+                m.strtab = t.strtab;
+                m.strsz = t.strsz;
+                m.count = t.count;
+                m.hasHash = t.hasHash;
+                if (!t.hasHash) {
+                    s->anyWithoutHash = true;
+                }
+            }
+            return false;
+        });
+    }
+
+    /* Поиск по снимку: перебор .dynsym с отсевами оригинала. Ядро не зовётся. */
+    inline const Sym* FindDefinedSym(const ModuleTables& m, const char* name) {
+        if (name == nullptr || name[0] == '\0' || m.symtab == 0 || m.strtab == 0) {
+            return nullptr;
+        }
+        const char* strings = reinterpret_cast<const char*>(static_cast<std::uintptr_t>(m.strtab));
+        const Sym*  syms    = reinterpret_cast<const Sym*>(static_cast<std::uintptr_t>(m.symtab));
+        for (std::uint64_t i = 0; i < m.count; ++i) {
+            const Sym& s = syms[i];
+            if (s.st_shndx == SHN_UNDEF_ || s.st_shndx == SHN_COMMON_ ||
+                (s.st_info & 0xF) == STT_FILE_ || s.st_name == 0 || s.st_name >= m.strsz) {
+                continue;
+            }
+            if (NameEquals(strings + s.st_name, name)) {
+                return &s;
+            }
+        }
+        return nullptr;
+    }
+
+    /*
      * Своя F для модуля без DT_HASH: перебор .dynsym по имени с отсевами
      * оригинала. Возвращает указатель на Elf64_Sym (как F) или nullptr.
+     * Зовёт ядро (через query) — только для проверок вне перехвата.
      */
     template <typename Query>
     inline const Sym* FindDefinedSym(Query& query, std::uint64_t base, const char* name) {

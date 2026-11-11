@@ -211,12 +211,13 @@ Bundle plan_logs_bundle(Env& env, const BundleInput& in, const MtimeFn& mtime) {
     auto last = pick_last_crash(crashes, tid, [&](const std::string& p) { return read_text(env.fs, p, 16 * 1024); });
     if (last) add_file("crash-" + last->name, last->path, "crash");
     else b.warnings.add("отчёта Atmosphère о падении этой игры нет", "logs/no_crash");
-    // паспорт консоли: модуль кладёт свой рядом с квитанцией; нет — паспорт приложения
+    // паспорта: приложения (прошивка, Atmosphère, emuMMC, ключи — из процесса игры их не прочесть) и модуля
+    // (что загружено в процессе игры: sdk, исправления). Нужны ОБА: раньше паспорт модуля заменял паспорт
+    // приложения под тем же именем, и прошивка с Atmosphère пропадали из логов (Biped 2, 11.11.2026).
     const std::string td = path_join(in.contents_dir, tid);
     const std::string mod_passport = path_join(td, "nxredirect-passport.txt");
-    if (env.fs.is_file(mod_passport)) {
-        add_file("passport.txt", mod_passport, "passport");
-    } else if (!in.passport_text.empty()) {
+    if (env.fs.is_file(mod_passport)) add_file("passport-module.txt", mod_passport, "passport");
+    if (!in.passport_text.empty()) {
         BundleItem it;
         it.name = "passport.txt";
         it.data = std::make_shared<const Bytes>(in.passport_text.begin(), in.passport_text.end());
