@@ -23,9 +23,14 @@
  * ----------
  * Подменяем F своей, но только когда это нужно: F — старая (сразу после
  * пролога `ldr x?, [x0, #80]`, нет проверки флага obj+195) И хотя бы у одного
- * модуля процесса нет DT_HASH. Своя F: модуль с DT_HASH — к оригиналу
- * (поведение sdk как есть); без DT_HASH — перебор .dynsym модуля с теми же
- * отсевами, что у оригинала (неопределённые, SHN_COMMON, STT_FILE), по ИМЕНИ.
+ * модуля процесса есть DT_GNU_HASH. Своя F для ЛЮБОГО модуля из снимка (ниже) —
+ * перебор .dynsym с теми же отсевами, что у оригинала (неопределённые,
+ * SHN_COMMON, STT_FILE), по ИМЕНИ; поля хеш-таблиц в ModuleObject не читаем.
+ *
+ * НЕ «есть DT_HASH — значит оригинал»: так было в 1.0.7–1.0.8, и main Biped 2
+ * упал в оригинале. Код ModuleObject::Initialize sdk 20.5.14 (@0x14e2f4): есть
+ * DT_GNU_HASH — по obj+80 кладётся GNU-таблица и ставится флаг, DT_HASH при этом
+ * НЕ используется; DT_HASH берётся, только если GNU нет. rtld игры — того же SDK.
  * Таблицы берём не из ModuleObject (его раскладка — дело rtld), а из MOD0 и
  * .dynamic самого модуля; из ModuleObject — только база модуля (obj+40: её же
  * читают LookupSymbol обеих версий, чтобы получить адрес символа).
@@ -139,28 +144,6 @@ namespace nxr::rofix {
             static_cast<std::uint64_t>(static_cast<std::int64_t>(mod0Addr) + mod0->m_DynamicStartOffset)));
     }
 
-    /* Есть ли у модуля SysV-таблица DT_HASH. Модуль не разобрался — «нет». */
-    template <typename Query>
-    inline bool HasSysvHash(Query& query, std::uint64_t base) {
-        Tables t {};
-        const Dyn* dyn = DynamicOf(query, base);
-        return dyn != nullptr && ResolveTables(query, base, dyn, &t) && t.hasHash;
-    }
-
-    /* Хоть у одного модуля процесса нет DT_HASH. */
-    template <typename Query>
-    inline bool AnyModuleWithoutSysvHash(Query& query) {
-        bool found = false;
-        ForEachModule(query, [&](std::uint64_t base, const Dyn* dyn) {
-            Tables t {};
-            if (ResolveTables(query, base, dyn, &t) && !t.hasHash) {
-                found = true;
-            }
-            return found;
-        });
-        return found;
-    }
-
     /*
      * СНИМОК МОДУЛЕЙ. Внутри перехвата НЕЛЬЗЯ звать ядро: на консоли (Biped 2,
      * поиск пришёл через nn::ro::LoadModule -> detail::LookupGlobalManual)
@@ -177,13 +160,14 @@ namespace nxr::rofix {
         std::uint64_t strsz  = 0;
         std::uint64_t count  = 0;
         bool          hasHash = false;
+        bool          hasGnuHash = false;
     };
 
     struct Snapshot {
         static constexpr int Max = 32;   /* rtld, main, subsdk0..9, sdk, внедрённые — с запасом */
         ModuleTables mods[Max] {};
         int          n = 0;
-        bool         anyWithoutHash = false;
+        bool         anyGnuHash = false;   /* у какого-то модуля есть DT_GNU_HASH — нужен перехват */
 
         const ModuleTables* Find(std::uint64_t base) const {
             for (int i = 0; i < n; ++i) {
@@ -198,7 +182,7 @@ namespace nxr::rofix {
     template <typename Query>
     inline void TakeSnapshot(Query& query, Snapshot* s) {
         s->n = 0;
-        s->anyWithoutHash = false;
+        s->anyGnuHash = false;
         ForEachModule(query, [&](std::uint64_t base, const Dyn* dyn) {
             Tables t {};
             if (s->n < Snapshot::Max && ResolveTables(query, base, dyn, &t)) {
@@ -209,8 +193,9 @@ namespace nxr::rofix {
                 m.strsz = t.strsz;
                 m.count = t.count;
                 m.hasHash = t.hasHash;
-                if (!t.hasHash) {
-                    s->anyWithoutHash = true;
+                m.hasGnuHash = t.hasGnuHash;
+                if (t.hasGnuHash) {
+                    s->anyGnuHash = true;
                 }
             }
             return false;
@@ -224,6 +209,10 @@ namespace nxr::rofix {
         }
         const char* strings = reinterpret_cast<const char*>(static_cast<std::uintptr_t>(m.strtab));
         const Sym*  syms    = reinterpret_cast<const Sym*>(static_cast<std::uintptr_t>(m.symtab));
+        /* Не-LOCAL — сразу; LOCAL с тем же именем — запасной ответ: вызывающие
+           (LookupSymbol, LookupGlobalManual) отбрасывают st_info < 0x10, и первым
+           LOCAL нельзя заслонить GLOBAL, стоящий дальше в таблице. */
+        const Sym* local = nullptr;
         for (std::uint64_t i = 0; i < m.count; ++i) {
             const Sym& s = syms[i];
             if (s.st_shndx == SHN_UNDEF_ || s.st_shndx == SHN_COMMON_ ||
@@ -231,16 +220,20 @@ namespace nxr::rofix {
                 continue;
             }
             if (NameEquals(strings + s.st_name, name)) {
-                return &s;
+                if ((s.st_info >> 4) != STB_LOCAL_) {
+                    return &s;
+                }
+                if (local == nullptr) {
+                    local = &s;
+                }
             }
         }
-        return nullptr;
+        return local;
     }
 
     /*
-     * Своя F для модуля без DT_HASH: перебор .dynsym по имени с отсевами
-     * оригинала. Возвращает указатель на Elf64_Sym (как F) или nullptr.
-     * Зовёт ядро (через query) — только для проверок вне перехвата.
+     * Тот же поиск по базе модуля через query (зовёт ядро) — только для
+     * проверок вне перехвата (хост-тест). Возвращает Elf64_Sym* или nullptr.
      */
     template <typename Query>
     inline const Sym* FindDefinedSym(Query& query, std::uint64_t base, const char* name) {

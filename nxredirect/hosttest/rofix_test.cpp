@@ -8,7 +8,9 @@
  *     пролог и три инструкции, записанные кодировками.
  * [2] Старая ли она: 19.3.13 — `ldr x8, [x0, #80]` сразу после пролога (только
  *     DT_HASH); 20.5.14 — сначала `ldrb w9, [x0, #195]` (флаг DT_GNU_HASH).
- * [3] Свой поиск в модуле без DT_HASH: отсевы как у оригинала, имя, DT_HASH-флаг.
+ * [3] Свой поиск: отсевы как у оригинала, имя.
+ * [4] Снимок: перехват ставится при DT_GNU_HASH — и когда DT_HASH тоже есть (main Biped 2:
+ *     rtld SDK 20 при обеих таблицах кладёт в ModuleObject GNU); только DT_HASH — не нужен.
  *
  *   g++ -std=c++17 -O1 -Wall -Wextra -o rofix_test rofix_test.cpp && ./rofix_test
  * (в run_hosttest.sh — рядом с bigmod_test).
@@ -74,8 +76,8 @@ struct Sim {
 constexpr std::uint64_t kCode = 0x1000, kTotal = 0x2000, kMod0 = 0x1000;
 
 /* Модуль с символами: [1] FILE «foo», [2] неопределённый «foo», [3] COMMON «foo»,
-   [4] определённый «foo» (FUNC GLOBAL, 0x40), [5] «bar» (0x80). withHash — DT_HASH есть. */
-void Build(std::uint8_t* buf, bool withHash) {
+   [4] определённый «foo» (FUNC GLOBAL, 0x40), [5] «bar» (0x80). withHash / withGnu — какие хеш-таблицы есть в .dynamic. */
+void Build(std::uint8_t* buf, bool withHash, bool withGnu) {
     std::memset(buf, 0, kTotal);
     reinterpret_cast<std::uint32_t*>(buf)[0] = 0x14000000;
     reinterpret_cast<std::uint32_t*>(buf)[1] = static_cast<std::uint32_t>(kMod0);
@@ -88,6 +90,7 @@ void Build(std::uint8_t* buf, bool withHash) {
     dyn[i++] = {nxr::DT_STRTAB_, kMod0 + 0x300};
     dyn[i++] = {nxr::DT_STRSZ_, 9};
     if (withHash) dyn[i++] = {nxr::DT_HASH_, kMod0 + 0x400};
+    if (withGnu) dyn[i++] = {nxr::DT_GNU_HASH_, kMod0 + 0x500};
     dyn[i++] = {nxr::DT_NULL_, 0};
     auto* s = reinterpret_cast<nxr::Sym*>(buf + kMod0 + 0x200);
     s[1] = {1, 0x14, 0, 1, 0x10, 0};        /* STT_FILE «foo» */
@@ -150,7 +153,7 @@ int main() {
         (reinterpret_cast<std::uintptr_t>(mem.data()) + 0xFFF) & ~static_cast<std::uintptr_t>(0xFFF));
     const auto base = reinterpret_cast<std::uint64_t>(buf);
     {
-        Build(buf, false);
+        Build(buf, false, true);
         Sim sim = Map(buf);
         const nxr::Sym* foo = FindDefinedSym(sim, base, "foo");
         Check(foo != nullptr && foo->st_value == 0x40,
@@ -159,40 +162,57 @@ int main() {
         Check(bar != nullptr && bar->st_value == 0x80, "«bar» найден");
         Check(FindDefinedSym(sim, base, "baz") == nullptr, "нет такого — nullptr");
         Check(FindDefinedSym(sim, base, "") == nullptr, "пустое имя — nullptr");
-        Check(!HasSysvHash(sim, base), "DT_HASH нет — HasSysvHash = false");
-        Check(AnyModuleWithoutSysvHash(sim), "в процессе есть модуль без DT_HASH");
         Check(FindDefinedSym(sim, base + kCode, "foo") == nullptr, "не база модуля — nullptr, без падения");
     }
-    {
-        Build(buf, true);
-        Sim sim = Map(buf);
-        Check(HasSysvHash(sim, base), "DT_HASH есть — HasSysvHash = true (идём в оригинал)");
-        Check(!AnyModuleWithoutSysvHash(sim), "у всех модулей DT_HASH — перехват не нужен");
-    }
 
-    std::printf("[4] снимок модулей: перехват не зовёт ядро\n");
+    std::printf("[4] снимок модулей: когда нужен перехват; поиск без ядра\n");
     {
-        Build(buf, false);
+        Build(buf, false, true);
         Sim sim = Map(buf);
         Snapshot snap {};
         TakeSnapshot(sim, &snap);
-        Check(snap.n == 1 && snap.anyWithoutHash, "снимок: один модуль, без DT_HASH");
+        Check(snap.n == 1 && snap.anyGnuHash && snap.mods[0].hasGnuHash, "только DT_GNU_HASH — перехват нужен");
         /* После снимка карта памяти «недоступна» — как ядро, отказавшее внутри перехвата. */
         sim.regions.clear();
         const ModuleTables* m = snap.Find(base);
-        Check(m != nullptr && !m->hasHash, "модуль найден по базе без обращения к ядру");
+        Check(m != nullptr, "модуль найден по базе без обращения к ядру");
         const nxr::Sym* foo = m != nullptr ? FindDefinedSym(*m, "foo") : nullptr;
         Check(foo != nullptr && foo->st_value == 0x40, "«foo» по снимку: отсевы те же");
         Check(m != nullptr && FindDefinedSym(*m, "baz") == nullptr, "нет такого — nullptr");
         Check(snap.Find(base + 0x1000) == nullptr, "модуля нет в снимке — nullptr (перехват уйдёт в оригинал)");
     }
     {
-        Build(buf, true);
+        Build(buf, true, true);   /* как main Biped 2: обе таблицы */
         Sim sim = Map(buf);
         Snapshot snap {};
         TakeSnapshot(sim, &snap);
-        Check(snap.n == 1 && !snap.anyWithoutHash && snap.mods[0].hasHash,
-              "снимок с DT_HASH — перехват не нужен");
+        Check(snap.n == 1 && snap.anyGnuHash && snap.mods[0].hasHash && snap.mods[0].hasGnuHash,
+              "DT_HASH и DT_GNU_HASH вместе — перехват НУЖЕН (rtld SDK 20 берёт GNU)");
+        const ModuleTables* m = snap.Find(base);
+        const nxr::Sym* foo = m != nullptr ? FindDefinedSym(*m, "foo") : nullptr;
+        Check(foo != nullptr && foo->st_value == 0x40, "и такой модуль ищется своим поиском");
+    }
+    {
+        Build(buf, true, false);
+        Sim sim = Map(buf);
+        Snapshot snap {};
+        TakeSnapshot(sim, &snap);
+        Check(snap.n == 1 && !snap.anyGnuHash, "только DT_HASH — старая sdk справится, перехват не нужен");
+    }
+    {
+        /* LOCAL «foo» стоит ПЕРЕД GLOBAL «foo»: ответ — GLOBAL (вызывающие отбрасывают LOCAL). */
+        Build(buf, false, true);
+        auto* sy = reinterpret_cast<nxr::Sym*>(buf + kMod0 + 0x200);
+        sy[1] = {1, 0x02, 0, 1, 0x30, 4};   /* LOCAL FUNC «foo» вместо FILE */
+        Sim sim = Map(buf);
+        Snapshot snap {};
+        TakeSnapshot(sim, &snap);
+        const ModuleTables* m = snap.Find(base);
+        const nxr::Sym* foo = m != nullptr ? FindDefinedSym(*m, "foo") : nullptr;
+        Check(foo != nullptr && foo->st_value == 0x40, "LOCAL раньше GLOBAL — найден GLOBAL");
+        sy[4].st_info = 0x02;               /* и GLOBAL сделать LOCAL: ответ — первый LOCAL */
+        foo = m != nullptr ? FindDefinedSym(*m, "foo") : nullptr;
+        Check(foo != nullptr && foo->st_value == 0x30, "только LOCAL — первый LOCAL (как оригинал)");
     }
 
     const int kMinChecks = 23;

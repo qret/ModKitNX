@@ -90,6 +90,7 @@ namespace nxr {
     constexpr std::int64_t DT_SYMTAB_ = 6;
     constexpr std::int64_t DT_STRSZ_  = 10;
     constexpr std::int64_t DT_SYMENT_ = 11;
+    constexpr std::int64_t DT_GNU_HASH_ = 0x6FFFFEF5;
     constexpr std::uint16_t SHN_UNDEF_ = 0;
 
     /*
@@ -165,6 +166,7 @@ namespace nxr {
         std::uint64_t strsz  = 0;
         std::uint64_t count  = 0;   /* число символов в .dynsym */
         bool          hasHash = false; /* есть ли DT_HASH (у модулей игры — нет) */
+        bool          hasGnuHash = false; /* есть ли DT_GNU_HASH (nxr_rofix.hpp) */
     };
 
     /*
@@ -206,6 +208,7 @@ namespace nxr {
                 case DT_STRSZ_:  t.strsz   = dyn->d_val; break;
                 case DT_SYMENT_: syment    = dyn->d_val; break;
                 case DT_HASH_:   t.hasHash = true;       break;
+                case DT_GNU_HASH_: t.hasGnuHash = true;  break;
                 default: break;
             }
         }

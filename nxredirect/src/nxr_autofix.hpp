@@ -740,6 +740,8 @@ struct PassportFacts {
     int           nvrmPath      = 0;       /* nxr::compat::NvrmPath, 0 — не считался */
     const char*   nvrmPathText  = nullptr;
     const char*   roFixText     = nullptr;   /* поиск символов nn::ro (nxr_rofix.hpp) */
+    int           roSnapModules = -1;        /* модулей в снимке перехвата, -1 — снимка не было */
+    int           roSnapGnu     = 0;         /* из них с DT_GNU_HASH */
 };
 
 inline constexpr char PassportName[] = "nxredirect-passport.txt";
@@ -833,6 +835,12 @@ inline void FormatPassport(Buf& b, const PassportFacts& f) {
     if (f.roFixText != nullptr) {
         b.Add("  поиск символов nn::ro: ");
         b.Add(f.roFixText);
+        if (f.roSnapModules >= 0) {
+            b.Add("; модулей в снимке: ");
+            b.AddDec(static_cast<std::uint32_t>(f.roSnapModules));
+            b.Add(", из них с DT_GNU_HASH: ");
+            b.AddDec(static_cast<std::uint32_t>(f.roSnapGnu));
+        }
         b.Line();
     }
 }

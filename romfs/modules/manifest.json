@@ -4,13 +4,13 @@
     "source_url":  "https://github.com/qret/ModKitNX/tree/main/nxredirect",
     "source_path":  "nxredirect/",
     "pipeline_version":  "1.1",
-    "collected":  "2026-11-11 16:42",
+    "collected":  "2026-11-11 17:11",
     "modules":  [
                     {
                         "id":  "autofix",
                         "file":  "autofix/subsdk",
-                        "size":  57321,
-                        "sha256":  "c1b82fcca90394f6c63e0da5b7357c1eb07e08ba82596da94f0282da143f1fb3",
+                        "size":  57733,
+                        "sha256":  "14c6031505ced14bdc806dbbd3baf3fdc55a7d7c2bac2a478a9b27b89ef5d564",
                         "title":  "основной (с автоисправлением)",
                         "why":  "один модуль для любой консоли: на родной библиотеке вызовы уходят в её функции, на подменённой включаются свои исправления; пишет на карту паспорт консоли",
                         "autofix":  true,
@@ -19,13 +19,13 @@
                         "gfx":  false,
                         "nvrm":  true,
                         "expect":  "both",
-                        "built":  "2026-11-11 16:42"
+                        "built":  "2026-11-11 17:11"
                     },
                     {
                         "id":  "autofix-earlyfs",
                         "file":  "autofix-earlyfs/subsdk",
-                        "size":  57883,
-                        "sha256":  "d409de8978cc00b66c9cbaeb645f36719d94ac4548b1e91f3a32f9e3b75a9060",
+                        "size":  58314,
+                        "sha256":  "fa4e99b38484598feb3c0db64b250854d40c97fd3b21132b399564a718900601",
                         "title":  "основной с ранним перехватом (для мода со своим модулем)",
                         "why":  "тот же модуль с автоисправлением, но перехват открытия файлов ставится ещё при его загрузке — до кода модуля мода: файлы, которые мод читает при старте, уже приходят с карты",
                         "autofix":  true,
@@ -34,13 +34,13 @@
                         "gfx":  false,
                         "nvrm":  true,
                         "expect":  "both",
-                        "built":  "2026-11-11 16:42"
+                        "built":  "2026-11-11 17:11"
                     },
                     {
                         "id":  "plain",
                         "file":  "plain/subsdk",
-                        "size":  27708,
-                        "sha256":  "ef1cfa36b0d5bb1665fbb5024c5513577b8747cf42c48210d48fc3c037dccb31",
+                        "size":  27774,
+                        "sha256":  "a74dc0958a2d8b879e63169b6b305c839fa8ac5a796f3eeb5657e9662fba6a71",
                         "title":  "без автоисправления",
                         "why":  "редкий случай — разбор проблем: модуль без исправлений и без паспорта, как до автоисправления",
                         "autofix":  false,
@@ -49,13 +49,13 @@
                         "gfx":  false,
                         "nvrm":  false,
                         "expect":  "none",
-                        "built":  "2026-11-11 16:42"
+                        "built":  "2026-11-11 17:11"
                     },
                     {
                         "id":  "diag",
                         "file":  "diag/subsdk",
-                        "size":  60595,
-                        "sha256":  "2c1fe62253365ae23872b960a5c6698f364cfcd45af8c4240322d47f26acb453",
+                        "size":  60664,
+                        "sha256":  "186b7ff2fc60674a9072feaaa3f4f2201bf96d7025ef84846f97ad95d7832d57",
                         "title":  "диагностический (без автоисправления)",
                         "why":  "пишет отчёт sd:/nxredirect-diag.txt — им разбирают, почему мод не подхватился",
                         "autofix":  false,
@@ -64,13 +64,13 @@
                         "gfx":  false,
                         "nvrm":  false,
                         "expect":  "none",
-                        "built":  "2026-11-11 16:42"
+                        "built":  "2026-11-11 17:11"
                     },
                     {
                         "id":  "diag-gfx",
                         "file":  "diag-gfx/subsdk",
-                        "size":  100703,
-                        "sha256":  "2f060293e0aed3a633e846e7677b5c8b76276d5e32a4b3386ac6dcbd446d961a",
+                        "size":  100711,
+                        "sha256":  "2b9d98b9b80bca97348d8d7ede05a6ee563ca8155fe081d9c056caf231e263eb",
                         "title":  "диагностический + разбор картинки (без автоисправления)",
                         "why":  "то же плюс отчёт sd:/nxredirect-gfx.txt — им разбирают чёрный экран",
                         "autofix":  false,
@@ -79,13 +79,13 @@
                         "gfx":  true,
                         "nvrm":  false,
                         "expect":  "none",
-                        "built":  "2026-11-11 16:42"
+                        "built":  "2026-11-11 17:11"
                     },
                     {
                         "id":  "plain-gfx",
                         "file":  "plain-gfx/subsdk",
-                        "size":  91136,
-                        "sha256":  "92ef864d20ad4f709ce4c529e1e889e29458bd70949d9b679ac898685c3c9924",
+                        "size":  90911,
+                        "sha256":  "ab5545ef9cea3ba44943aa0549501743419c0d9ee041555a102dff53a89733f8",
                         "title":  "разбор картинки (без автоисправления)",
                         "why":  "рабочая сборка с отчётом о выводе картинки, без остального диагностического обвеса",
                         "autofix":  false,
@@ -94,13 +94,13 @@
                         "gfx":  true,
                         "nvrm":  false,
                         "expect":  "none",
-                        "built":  "2026-11-11 16:42"
+                        "built":  "2026-11-11 17:11"
                     },
                     {
                         "id":  "autofix-diag",
                         "file":  "autofix-diag/subsdk",
-                        "size":  88972,
-                        "sha256":  "939090b27b1f95a0df5918608ea76b0f1d6700a385cedce6f80078ae46ef0526",
+                        "size":  89331,
+                        "sha256":  "80e77a72b908f180deeaa2c25472037223112da59bf1a9aac7c2eed08c4d7ba7",
                         "title":  "отладочный (с автоисправлением)",
                         "why":  "пишет отчёт sd:/nxredirect-diag.txt — им разбирают, почему мод не работает; с автоисправлением игра доходит до отчёта и на консоли с подменённой библиотекой",
                         "autofix":  true,
@@ -109,13 +109,13 @@
                         "gfx":  false,
                         "nvrm":  true,
                         "expect":  "both",
-                        "built":  "2026-11-11 16:42"
+                        "built":  "2026-11-11 17:11"
                     },
                     {
                         "id":  "autofix-diag-gfx",
                         "file":  "autofix-diag-gfx/subsdk",
-                        "size":  99657,
-                        "sha256":  "4fa034fef604f9ae2cc664627e93143e5dbdcc8e80d7c28a85046c0bf936a98d",
+                        "size":  99229,
+                        "sha256":  "8c72dd6d955cf371cc8616b19886d2c2fdaf4c85c1894cdfa372f59cc98db782",
                         "title":  "отладочный + разбор картинки (с автоисправлением)",
                         "why":  "то же плюс отчёт sd:/nxredirect-gfx.txt — им разбирают чёрный экран",
                         "autofix":  true,
@@ -124,13 +124,13 @@
                         "gfx":  true,
                         "nvrm":  true,
                         "expect":  "both",
-                        "built":  "2026-11-11 16:42"
+                        "built":  "2026-11-11 17:11"
                     },
                     {
                         "id":  "autofix-diag-earlyfs",
                         "file":  "autofix-diag-earlyfs/subsdk",
-                        "size":  89546,
-                        "sha256":  "1f94bbb1474dc381cca50b49814e4ac12d3b4c9fad1dfb6e7e3cf2439d99fa4c",
+                        "size":  89986,
+                        "sha256":  "b2027ea304f9ae5784d2f6963ea023febedfaece94c0e9aa93cacd9d26aa3ba4",
                         "title":  "отладочный с ранним перехватом (для мода со своим модулем)",
                         "why":  "отладочный с автоисправлением, перехват открытия файлов ставится при загрузке — до кода модуля мода",
                         "autofix":  true,
@@ -139,7 +139,7 @@
                         "gfx":  false,
                         "nvrm":  true,
                         "expect":  "both",
-                        "built":  "2026-11-11 16:42"
+                        "built":  "2026-11-11 17:11"
                     }
                 ]
 }

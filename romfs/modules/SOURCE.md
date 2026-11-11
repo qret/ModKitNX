@@ -8,15 +8,15 @@ Source code of the modules: `nxredirect/` in this repository — https://github.
 
 | variant | file | size | sha256 |
 |---|---|---|---|
-| autofix | autofix/subsdk | 57321 | `c1b82fcca90394f6c63e0da5b7357c1eb07e08ba82596da94f0282da143f1fb3` |
-| autofix-earlyfs | autofix-earlyfs/subsdk | 57883 | `d409de8978cc00b66c9cbaeb645f36719d94ac4548b1e91f3a32f9e3b75a9060` |
-| plain | plain/subsdk | 27708 | `ef1cfa36b0d5bb1665fbb5024c5513577b8747cf42c48210d48fc3c037dccb31` |
-| diag | diag/subsdk | 60595 | `2c1fe62253365ae23872b960a5c6698f364cfcd45af8c4240322d47f26acb453` |
-| diag-gfx | diag-gfx/subsdk | 100703 | `2f060293e0aed3a633e846e7677b5c8b76276d5e32a4b3386ac6dcbd446d961a` |
-| plain-gfx | plain-gfx/subsdk | 91136 | `92ef864d20ad4f709ce4c529e1e889e29458bd70949d9b679ac898685c3c9924` |
-| autofix-diag | autofix-diag/subsdk | 88972 | `939090b27b1f95a0df5918608ea76b0f1d6700a385cedce6f80078ae46ef0526` |
-| autofix-diag-gfx | autofix-diag-gfx/subsdk | 99657 | `4fa034fef604f9ae2cc664627e93143e5dbdcc8e80d7c28a85046c0bf936a98d` |
-| autofix-diag-earlyfs | autofix-diag-earlyfs/subsdk | 89546 | `1f94bbb1474dc381cca50b49814e4ac12d3b4c9fad1dfb6e7e3cf2439d99fa4c` |
+| autofix | autofix/subsdk | 57733 | `14c6031505ced14bdc806dbbd3baf3fdc55a7d7c2bac2a478a9b27b89ef5d564` |
+| autofix-earlyfs | autofix-earlyfs/subsdk | 58314 | `fa4e99b38484598feb3c0db64b250854d40c97fd3b21132b399564a718900601` |
+| plain | plain/subsdk | 27774 | `a74dc0958a2d8b879e63169b6b305c839fa8ac5a796f3eeb5657e9662fba6a71` |
+| diag | diag/subsdk | 60664 | `186b7ff2fc60674a9072feaaa3f4f2201bf96d7025ef84846f97ad95d7832d57` |
+| diag-gfx | diag-gfx/subsdk | 100711 | `2b9d98b9b80bca97348d8d7ede05a6ee563ca8155fe081d9c056caf231e263eb` |
+| plain-gfx | plain-gfx/subsdk | 90911 | `ab5545ef9cea3ba44943aa0549501743419c0d9ee041555a102dff53a89733f8` |
+| autofix-diag | autofix-diag/subsdk | 89331 | `80e77a72b908f180deeaa2c25472037223112da59bf1a9aac7c2eed08c4d7ba7` |
+| autofix-diag-gfx | autofix-diag-gfx/subsdk | 99229 | `8c72dd6d955cf371cc8616b19886d2c2fdaf4c85c1894cdfa372f59cc98db782` |
+| autofix-diag-earlyfs | autofix-diag-earlyfs/subsdk | 89986 | `b2027ea304f9ae5784d2f6963ea023febedfaece94c0e9aa93cacd9d26aa3ba4` |
 
 Each file can be rebuilt from the sources and compared byte for byte (WSL or Linux with devkitPro):
 `bash nxredirect/build-romfs-modules.sh <build folder> --check romfs/modules`; sizes and sha256 are also in `manifest.json`.

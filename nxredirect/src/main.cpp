@@ -230,11 +230,13 @@ namespace {
     /* Поиск символов nn::ro в старой sdk (nxr_rofix.hpp, ApplyRoFix):
        0 — не проверяли, 1 — не нужно, 2 — поставлен, 3 — образец не совпал. */
     int g_RoFix = 0;
+    int g_RoSnapModules = -1;   /* для паспорта: снимок перехвата (ApplyRoFix) */
+    int g_RoSnapGnu = 0;
 
     const char* RoFixText() {
         switch (g_RoFix) {
-            case 1: return "не нужно (sdk знает DT_GNU_HASH или у всех модулей есть DT_HASH)";
-            case 2: return "СВОЙ — sdk ищет только по DT_HASH, у модулей игры его нет: поиск nn::ro подменён";
+            case 1: return "не нужно (sdk знает DT_GNU_HASH или его нет ни у одного модуля)";
+            case 2: return "СВОЙ — sdk ищет только по DT_HASH, у модулей игры DT_GNU_HASH: поиск nn::ro подменён";
             case 3: return "НЕ ПОСТАВЛЕН — код nn::ro::LookupModuleSymbol не узнан";
             default: return nullptr;
         }
@@ -1367,6 +1369,8 @@ namespace {
                 ? nxr::compat::NvrmPathText(static_cast<nxr::compat::NvrmPath>(g_Nvrm.path))
                 : nullptr;
             f.roFixText = RoFixText();
+            f.roSnapModules = g_RoSnapModules;
+            f.roSnapGnu = g_RoSnapGnu;
             g_Text.m_Len = 0;
             FormatPassport(g_Text, f);
             if (PassportPath(g_Path, sizeof(g_Path), g_SdPrefix, g_SdPrefixLen) == 0) {
@@ -1637,10 +1641,11 @@ void InstallMountHooks() {
 #ifndef NXR_NO_AUTOFIX
 /*
  * ПОИСК СИМВОЛОВ nn::ro В СТАРОЙ sdk (nxr_rofix.hpp). sdk 19.3.13 ищет символ в
- * модуле только по DT_HASH; модули игры на SDK 20+ бывают только с DT_GNU_HASH —
- * nn::ro::LookupSymbol падал (Biped 2). Подменяем внутреннюю функцию поиска
- * одного модуля: модуль с DT_HASH — оригинал, без — свой перебор .dynsym.
- * Ставится, только если функция старая И есть модуль без DT_HASH. Трамплин — один
+ * модуле только по DT_HASH; у модулей игры на SDK 20+ есть DT_GNU_HASH, и rtld
+ * кладёт в ModuleObject GNU-таблицу — nn::ro::LookupSymbol падал (Biped 2).
+ * Подменяем внутреннюю функцию поиска одного модуля: модуль из снимка — свой
+ * перебор .dynsym, не из снимка — оригинал.
+ * Ставится, только если функция старая И есть модуль с DT_GNU_HASH. Трамплин — один
  * (бюджет: nxr_gfx.hpp, HooksOutsideGfx).
  */
 namespace {
@@ -1655,8 +1660,10 @@ HOOK_DEFINE_TRAMPOLINE(RoLookupHook) {
             ? *reinterpret_cast<const std::uint64_t*>(
                   static_cast<const std::uint8_t*>(obj) + nxr::rofix::ModuleObjectBase)
             : 0;
+        /* Модуль из снимка — всегда свой поиск: хеш-полям ModuleObject старая sdk
+           не верит (nxr_rofix.hpp, «НЕ есть DT_HASH»). Не из снимка — оригинал. */
         const nxr::rofix::ModuleTables* m = g_RoSnapshot.Find(base);
-        if (m == nullptr || m->hasHash) {
+        if (m == nullptr) {
             return Orig(obj, name);
         }
         return nxr::rofix::FindDefinedSym(*m, name);
@@ -1681,7 +1688,14 @@ void ApplyRoFix() {
         return;
     }
     nxr::rofix::TakeSnapshot(g_MemQuery, &g_RoSnapshot);
-    if (!g_RoSnapshot.anyWithoutHash) {
+    g_RoSnapModules = g_RoSnapshot.n;
+    g_RoSnapGnu = 0;
+    for (int i = 0; i < g_RoSnapshot.n; ++i) {
+        if (g_RoSnapshot.mods[i].hasGnuHash) {
+            ++g_RoSnapGnu;
+        }
+    }
+    if (!g_RoSnapshot.anyGnuHash) {
         g_RoFix = 1;
         return;
     }
