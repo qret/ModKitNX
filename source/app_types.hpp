@@ -86,6 +86,13 @@ struct GapLine {
     std::string readable;                  // имя для показа (nn::friends::StartFriendInvitation) — symbol_names.hpp
     std::string online;                    // служба онлайн (friends, account…; symbol_names.hpp), пусто — не онлайн
 };
+// Поиск символов nn::ro — что сделает модуль (mk::forecast_ro_fix): одна строка в «Технических подробностях» и в
+// sdk-check.txt.
+struct RoFixLine {
+    std::string verdict;                   // "" — не считался; replace_gnu | replace | not_needed | not_old | no_ro | unknown
+    std::vector<std::string> gnuModules;   // модули игры с DT_GNU_HASH
+    int modules = 0;                       // прочитано модулей игры
+};
 struct FixForecastView {
     bool ok = false;                       // прогноз посчитан
     std::string sdkVersion;                // «19.3.13»
@@ -93,6 +100,7 @@ struct FixForecastView {
     bool swapped = false;                  // sdk старше библиотек игры
     std::vector<FixLine> fixes;
     std::vector<GapLine> gaps;             // пусто — пробелов нет (или не проверялось: FixesBlock::ownSdkOk)
+    RoFixLine ro;                          // поиск символов nn::ro
     Text error;                            // почему не посчитан (ошибка ядра)
 };
 struct FixesBlock {

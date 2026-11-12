@@ -377,7 +377,7 @@ def self_test(root):
         ok &= bool(cond)
 
     cat = load_catalog()
-    check(len(cat) == 3, "каталог разобран: %d записи" % len(cat))
+    check(len(cat) == 4, "каталог разобран: %d записи" % len(cat))
     hdr = EXPORTS_HDR.read_text(encoding="utf-8")
     check(all(('asm("%s")' % c["symbol"]) in hdr for c in cat),
           "у каждой записи каталога есть экспорт в nxr_compat_exports.hpp")
@@ -402,7 +402,11 @@ def self_test(root):
             return 2
         fc = forecast(sdk[ver], ex, cat)
         got = {k: (v["choice"], v["why"]) for k, v in fc["fixes"].items()}
-        check(got == exp, "прогноз по файлам = эмуляция модуля: %s + %s" % (game, ver))
+        # Записи без ожидания для этой sdk — только из явного списка run_autofix.UNCHECKED.
+        skipped = set(got) - set(exp)
+        check({k: got[k] for k in exp if k in got} == exp and
+              skipped <= ra.UNCHECKED.get(ver, set()),
+              "прогноз по файлам = эмуляция модуля: %s + %s" % (game, ver))
 
     wd, sin = Path(root) / "WD-patch", Path(root) / "SIN-patch"
     d = detect(sdk["19.3.13"], wd / "sdk", wd, cat)

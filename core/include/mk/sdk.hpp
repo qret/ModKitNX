@@ -93,6 +93,8 @@ struct ForecastGame {
     // Для пробелов sdk (sdk_gaps) — модули игры читаются один раз, здесь же:
     std::map<std::string, GameImport> all_imports;   // все импорты main/subsdk*
     std::set<std::string> module_exports;            // экспорты модулей игры, которые игра же и импортирует
+    std::vector<std::string> modules;                // прочитанные модули игры (main, subsdk0…)
+    std::vector<std::string> gnu_hash_modules;       // из них с DT_GNU_HASH в .dynamic (для поиска nn::ro)
     bool own_sdk_ok = false;                         // своя sdk игры (exefs/sdk) прочитана
     std::string own_sdk_error;                       // код ошибки, если не прочитана (нет файла — SDK_ABSENT)
     std::map<std::string, bool> own_sdk;             // нужный игре символ, определённый своей sdk -> заглушка
@@ -102,6 +104,7 @@ struct ForecastSdk {
     bool known = false;                   // name == "nnSdk"
     std::optional<Ver3> version;
     std::map<std::string, bool> exports;  // все экспорты sdk -> тело — заглушка «вернуть константу»
+    std::string ro_lookup;                // поиск символов nn::ro (ro_lookup_kind); пусто — не считался
 };
 struct FixForecast {
     AutofixFix fix;
@@ -113,6 +116,32 @@ struct ModuleForecast {
     bool swapped = false;                 // sdk старше библиотек игры
     std::vector<FixForecast> fixes;       // порядок каталога
 };
+// ------------------------------------------------------------ поиск символов nn::ro (прогноз ApplyRoFix модуля)
+// Модуль (nxredirect: ApplyRoFix, nxr_rofix.hpp) подменяет внутреннюю функцию поиска символа в модуле F, когда она
+// «старая» — знает только DT_HASH; ставит всегда, когда F старая (DT_GNU_HASH может принести и модуль, подгруженный
+// позже). Здесь — тот же образец своим кодом (модуль GPL-2.0, приложение GPL-3.0-or-later):
+//   F — цель первого `bl` в коде экспорта nn::ro::LookupModuleSymbol, если до него было `ldr x0, [x1]`, а прямо перед
+//       ним — `mov x1, x2` (смотрим 16 слов); иначе 0;
+//   F старая — в первых 12 словах `ldr x?, [x0, #80]` раньше, чем `ldrb w?, [x0, #195]` (флаг GNU в 20.x).
+inline constexpr const char* kRoLookupModuleSymbol = "_ZN2nn2ro18LookupModuleSymbolEPmPKNS0_6ModuleEPKc";
+inline constexpr int64_t kDtGnuHash = 0x6ffffef5;
+uint64_t ro_internal_lookup(const uint32_t* code, size_t words, uint64_t addr);
+bool ro_lookup_sysv_only(const uint32_t* code, size_t words);
+// "absent" — экспорта LookupModuleSymbol нет; "unknown" — образец не совпал; "sysv_only" — F знает только DT_HASH;
+// "gnu" — F проверяет флаг DT_GNU_HASH (obj+195, как 20.x); "other" — F другого вида (не старая и без флага: так у
+// 7.x…16.x). В обоих последних случаях модуль поиск не трогает.
+std::string ro_lookup_kind(const NsoImage& sdk);
+struct RoFixForecast {
+    // "" — не считался; "replace_gnu" — F старая, у модулей игры DT_GNU_HASH (без подмены — падение, Biped 2,
+    // Shrek 2); "replace" — F старая, у модулей игры только DT_HASH (модуль всё равно подменит);
+    // "not_needed" — sdk знает DT_GNU_HASH; "not_old" — F не старого вида (модуль не трогает); "no_ro" — в sdk нет
+    // nn::ro; "unknown" — код LookupModuleSymbol не узнан, модуль не трогает.
+    std::string verdict;
+    std::vector<std::string> gnu_modules;
+    int modules = 0;
+};
+RoFixForecast forecast_ro_fix(const ForecastGame& game, const ForecastSdk& sdk);
+
 ForecastGame forecast_game(Env& env, const std::string& exefs);
 ForecastSdk forecast_sdk(Env& env, const std::string& sdk_path);
 ModuleForecast forecast_fixes(const ForecastGame& game, const ForecastSdk& sdk);

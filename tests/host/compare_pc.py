@@ -67,31 +67,68 @@ def sha(p):
     return h.hexdigest()
 
 
+# Записи каталога сверх эталона. Эталон — каталог закрытого ПК-конвейера в архиве (Р-32): его не меняют, а
+# каталог модуля после закрытия пополняется. Новая запись допускается ТОЛЬКО отсюда, с причиной:
+#   nifm_access_status — nn::nifm::GetNetworkAccessStatus (Shrek 2 Remastered, SDK 21.4.2: на sdk 19.3.13 падение
+#                        PC = 0, символа нет ни в одной sdk 3.8.0…20.5.17); добавлена 12.11.2026, после закрытия эталона.
+CATALOG_EXTRA_IDS = ("nifm_access_status",)
+
+_FIX_RE = re.compile(rb"^NXR_FIX\((.*?)\)[ \t]*$", re.M | re.S)
+
+
 def _fix_entries(text):
-    """Записи каталога — строки с NXR_FIX( (комментарии и лицензия в сверку не входят)."""
-    return [ln.strip() for ln in text.replace(b"\r\n", b"\n").split(b"\n") if b"NXR_FIX(" in ln]
+    """Записи каталога: (id, вся запись NXR_FIX(...) с нормализованными пробелами). Комментарии и лицензия в сверку
+    не входят; запись — от «NXR_FIX(» в начале строки до «)» в конце строки (формат каталога: одна запись — один вызов)."""
+    out = []
+    for m in _FIX_RE.finditer(text.replace(b"\r\n", b"\n")):
+        body = b" ".join(m.group(1).split())
+        out.append((body.split(b",", 1)[0].strip().decode("utf-8", "replace"), body))
+    return out
 
 
-def catalog_matches(mine, module_copy, reference):
-    """(ok, причина): копия ядра побайтно = копия модуля (nxredirect/src, она поставляется в модуле);
-    записи NXR_FIX — те же, что у эталона (комментарии эталона могут отличаться)."""
+def catalog_matches(mine, module_copy, reference, extra_ids=CATALOG_EXTRA_IDS):
+    """(ok, причина): копия ядра побайтно = копия модуля (nxredirect/src, она поставляется в модуле); все записи
+    эталона есть без изменений и в том же порядке; записи сверх эталона — только из extra_ids, каждая один раз
+    (комментарии эталона могут отличаться)."""
     if mine != module_copy:
         return False, "копия ядра отличается от nxredirect/src: sha256 %s против %s" % (
             hashlib.sha256(mine).hexdigest()[:12], hashlib.sha256(module_copy).hexdigest()[:12])
     a, b = _fix_entries(mine), _fix_entries(reference)
-    if not a or a != b:
-        return False, "записи NXR_FIX расходятся с эталоном: %d против %d" % (len(a), len(b))
+    if not a or not b:
+        return False, "записи NXR_FIX не разобрались: у нас %d, у эталона %d" % (len(a), len(b))
+    ref_ids = {i for i, _ in b}
+    extra = [i for i, _ in a if i not in ref_ids]
+    bad = [i for i in extra if i not in extra_ids]
+    if bad:
+        return False, "записи сверх эталона не из списка CATALOG_EXTRA_IDS: %s" % ", ".join(bad)
+    if len(set(extra)) != len(extra):
+        return False, "запись сверх эталона повторена: %s" % ", ".join(extra)
+    kept = [e for e in a if e[0] in ref_ids]
+    if kept != b:
+        return False, "записи эталона изменены, пропущены или переставлены: %d против %d" % (len(kept), len(b))
     return True, ""
 
 
 def catalog_negatives(mine, module_copy, reference):
-    """Сверка обязана краснеть: лишний байт, изменённая буква записи, лишняя запись у эталона."""
+    """Сверка обязана краснеть: лишний байт, изменённая буква записи, лишняя запись у эталона, запись эталона
+    пропала, запись сверх эталона не из списка, изменённая строка истории записи эталона."""
     check(not catalog_matches(mine + b"\n", module_copy, reference)[0], "негатив: каталог с лишним байтом — отказ")
-    i = mine.find(b"NXR_FIX(")
-    bad = mine[:i] + b"X" + mine[i + 1:] if i >= 0 else mine + b"x"
+    i = mine.find(b'"_Z', mine.find(b"\nNXR_FIX("))   # буква в символе первой записи (не в комментарии)
+    bad = mine[:i + 1] + b"X" + mine[i + 2:] if i >= 0 else mine + b"x"
     check(not catalog_matches(bad, bad, reference)[0], "негатив: изменённая запись — отказ")
-    check(not catalog_matches(mine, module_copy, reference + b"\nNXR_FIX(x)\n")[0],
+    check(not catalog_matches(mine, module_copy, reference + b'\nNXR_FIX(x, "y", MISSING, ANY, "h", "o")\n')[0],
           "негатив: у эталона лишняя запись — отказ")
+    j = mine.find(b"\nNXR_FIX(")
+    k = mine.find(b"\n\n", j + 1)
+    gone = mine[:j] + mine[k:] if j >= 0 and k > j else mine
+    check(not catalog_matches(gone, gone, reference)[0], "негатив: первая запись эталона пропала — отказ")
+    alien = mine + b'\nNXR_FIX(alien_fix, "_Z5alienv", MISSING, ANY,\n        "h",\n        "o")\n'
+    check(not catalog_matches(alien, alien, reference)[0], "негатив: запись сверх эталона не из списка — отказ")
+    check(not catalog_matches(mine, module_copy, reference, extra_ids=())[0],
+          "негатив: пустой список допусков — наша новая запись не проходит")
+    h = mine.find(b"19.3.13", mine.find(b"\nNXR_FIX("))   # история первой записи эталона
+    hist = mine[:h] + b"18" + mine[h + 2:] if h >= 0 else mine + b"x"
+    check(not catalog_matches(hist, hist, reference)[0], "негатив: изменена строка истории записи эталона — отказ")
 
 
 STAMP_RE = re.compile(r"\.(bak|removed)-\d{8}-\d{6}")
@@ -295,6 +332,9 @@ def stubdiff_cases(env):
             rc, out = env.pc("scripts/stubdiff.py", "--forecast", "--sdk", f, "--game-exefs", ex, "--json")
             pa = json.loads(out) if rc == 0 else None
             rc2, pb, _ = env.cli_run("forecast", "--sdk", f, "--game-exefs", ex)
+            if pb and isinstance(pb.get("fixes"), dict):
+                # записи сверх эталона (CATALOG_EXTRA_IDS) эталон не знает — в сверку прогноза не входят
+                pb = dict(pb, fixes={k: v for k, v in pb["fixes"].items() if k not in CATALOG_EXTRA_IDS})
             check(pa is not None and pb and strip_keys(pa, {"sdk"}) == strip_keys(pb, {"sdk"}),
                   "прогноз %s + %s: ядро == stubdiff.py" % (g, v), "эталон %s / ядро %s" % (pa, pb))
         cn = env.games / (g + ".cnmt")
@@ -495,7 +535,7 @@ def main():
     module_copy = (repo / "nxredirect" / "src" / "nxr_autofix_catalog.h").read_bytes()
     reference = (env.pipe_src / "src" / "nxr_autofix_catalog.h").read_bytes()
     ok, why = catalog_matches(mine, module_copy, reference)
-    check(ok, "каталог автоисправления: ядро = модуль побайтно, записи = эталон", why)
+    check(ok, "каталог автоисправления: ядро = модуль побайтно, записи эталона без изменений, сверх — из списка", why)
     catalog_negatives(mine, module_copy, reference)
 
     # 1. только снять ZBIC

@@ -20,6 +20,9 @@ check_compat_syms — проверка собранного модуля (NSO) �
      sdk (-DNXR_COMPAT_NVRM_QUERY) — ровно тогда, когда ждём (--nvrm yes|no, по
      умолчанию no). Этот символ, в отличие от двух выше, ЕСТЬ в любой sdk: у
      родной 22.2 он настоящий, и лишний экспорт перекрыл бы его.
+  6. символ _ZN2nn4nifm22GetNetworkAccessStatusEv (автоисправление, запись
+     nifm_access_status каталога) — ровно тогда, когда ждём полный набор
+     автоисправления (--expect both): он входит в тот же «всё или ничего».
 
 Запуск:
     python check_compat_syms.py <nso> --expect none|hash|ldn|both [--nvrm yes|no]
@@ -39,6 +42,7 @@ import nso_min
 SYM_HASH = "_ZNSt3__113__hash_memoryEPKvm"
 SYM_LDN = "_ZN2nn3ldn11SetProtocolENS0_8ProtocolE"
 SYM_NVRM = "NvRmMemQueryHandleParams"
+SYM_NIFM = "_ZN2nn4nifm22GetNetworkAccessStatusEv"
 
 EXPECT = {
     "none": (False, False),
@@ -65,7 +69,7 @@ def inspect(path):
     n = nso_min.NSO(str(path))
     found = {}
     for i, nm, info, other, shndx, val, size in n.syms():
-        if nm in (SYM_HASH, SYM_LDN, SYM_NVRM):
+        if nm in (SYM_HASH, SYM_LDN, SYM_NVRM, SYM_NIFM):
             found[nm] = {"bind": info >> 4, "type": info & 0xF, "other": other,
                          "shndx": shndx, "value": val, "size": size}
     return {"found": found, "imports": sorted(n.imports().keys()),
@@ -77,7 +81,9 @@ def check(path, expect, quiet=False, nvrm=False):
     want_hash, want_ldn = EXPECT[expect]
     info = inspect(path)
     bad = []
-    for sym, want in ((SYM_HASH, want_hash), (SYM_LDN, want_ldn), (SYM_NVRM, bool(nvrm))):
+    want_nifm = want_hash and want_ldn   # полный набор автоисправления
+    for sym, want in ((SYM_HASH, want_hash), (SYM_LDN, want_ldn), (SYM_NVRM, bool(nvrm)),
+                      (SYM_NIFM, want_nifm)):
         got = info["found"].get(sym)
         if want and got is None:
             bad.append("нет символа %s, а он должен быть" % sym)
@@ -149,7 +155,7 @@ def self_test_nvrm(yes, no):
     ok = True
     for path, want in ((yes, True), (no, False)):
         mine = check(path, "both" if want else "none", quiet=True, nvrm=want)
-        mine = [b for b in mine if SYM_HASH not in b and SYM_LDN not in b]
+        mine = [b for b in mine if SYM_HASH not in b and SYM_LDN not in b and SYM_NIFM not in b]
         other = check(path, "both" if want else "none", quiet=True, nvrm=not want)
         other = [b for b in other if SYM_NVRM in b]
         say("   %s: своё ожидание (nvrm=%s) %s, чужое %s"

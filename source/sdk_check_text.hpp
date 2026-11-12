@@ -22,6 +22,28 @@ inline void appendForecast(std::string& out, const Forecast& v, const char* titl
     out += v.sdkKnown ? "" : " (не nnSdk)";
     out += v.swapped ? ", старше библиотек игры (подмена)" : "";
     out += "\r\n";
+    // Поиск символов nn::ro (то же, что строка в «Технических подробностях»).
+    if (!v.ro.verdict.empty()) {
+        const std::string sv = "sdk " + (v.sdkVersion.empty() ? std::string("?") : v.sdkVersion);
+        std::string gnu;
+        for (const auto& m : v.ro.gnuModules) gnu += (gnu.empty() ? "" : ", ") + m;
+        out += "  поиск символов nn::ro: ";
+        if (v.ro.verdict == "replace_gnu")
+            out += sv + " знает только старую таблицу символов (DT_HASH); у модулей игры — DT_GNU_HASH (" + gnu +
+                   "); модуль подменит поиск";
+        else if (v.ro.verdict == "replace")
+            out += sv + " знает только старую таблицу символов (DT_HASH); у модулей игры DT_GNU_HASH нет; модуль всё "
+                        "равно подменит поиск (для модулей, подгруженных позже)";
+        else if (v.ro.verdict == "not_needed")
+            out += sv + " знает DT_GNU_HASH — подменять поиск не нужно";
+        else if (v.ro.verdict == "not_old")
+            out += sv + ": поиск nn::ro не старого вида (не только DT_HASH) — модуль его не трогает";
+        else if (v.ro.verdict == "no_ro")
+            out += "в " + sv + " нет nn::ro::LookupModuleSymbol — подменять нечего";
+        else
+            out += sv + ": код nn::ro::LookupModuleSymbol не узнан — модуль поиск не трогает";
+        out += " [" + v.ro.verdict + ", модулей игры " + std::to_string(v.ro.modules) + "]\r\n";
+    }
     for (const auto& f : v.fixes) {
         if (f.importers.empty()) continue;   // игре не нужно
         out += "  исправит: " + f.id + " (" + f.symbol + ") — " + f.choice + ", " + f.why + "\r\n";

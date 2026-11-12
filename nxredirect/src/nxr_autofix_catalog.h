@@ -68,3 +68,14 @@ NXR_FIX(ldn_set_protocol, "_ZN2nn3ldn11SetProtocolENS0_8ProtocolE", MISSING, ANY
 NXR_FIX(nvrm_query, "NvRmMemQueryHandleParams", STUB, NO_VULKAN,
         "19.3.13: заглушка; 20.5.17: заглушка; 22.2.0: есть",
         "ioctl NVMAP_IOC_PARAM 0xC00C0109 как в 22.2.0, сверено с ним в эмуляторе")
+
+/*
+ * nn::nifm::GetNetworkAccessStatus() — Shrek 2 Remastered (библиотеки SDK 21.4.2)
+ * зовёт её из main; в sdk 3.8.0…20.5.17 символа нет, без нас rtld оставил бы
+ * ноль — падение PC = 0. В 21.4.2 тело: взять объект службы nifm, не вышло —
+ * вернуть 0, иначе — ответ службы (32 бита, w0). Своя — тот самый 0 («состояние
+ * сети не узнали»), без svc и IPC.
+ */
+NXR_FIX(nifm_access_status, "_ZN2nn4nifm22GetNetworkAccessStatusEv", MISSING, ANY,
+        "3.8.0…20.5.17: нет; 21.4.2: есть",
+        "возвращает 0, как 21.4.2 без службы nifm: состояние сети не узнали")

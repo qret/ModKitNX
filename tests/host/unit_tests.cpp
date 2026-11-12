@@ -334,9 +334,11 @@ static void test_names_versions() {
     CHECK(hos_version_text(0x58500000) == "22.5.0", "required_system_version 0x58500000 -> 22.5.0");
     CHECK(slot_number("subsdk7") == 7 && slot_number("subsdk") == -1 && slot_number("subsdk10") == -1, "slot_number");
     CHECK(title_dir_of("sdmc:/", "0100abc000000000") == "sdmc:/atmosphere/contents/0100ABC000000000", "title_dir_of");
-    CHECK(autofix_catalog().size() == 3 && autofix_catalog()[2].id == "nvrm_query" && autofix_catalog()[2].kind == "STUB" &&
-              autofix_catalog()[2].scope == "NO_VULKAN",
-          "каталог автоисправления: 3 записи из того же X-макроса");
+    CHECK(autofix_catalog().size() == 4 && autofix_catalog()[2].id == "nvrm_query" && autofix_catalog()[2].kind == "STUB" &&
+              autofix_catalog()[2].scope == "NO_VULKAN" && autofix_catalog()[3].id == "nifm_access_status" &&
+              autofix_catalog()[3].symbol == "_ZN2nn4nifm22GetNetworkAccessStatusEv" &&
+              autofix_catalog()[3].kind == "MISSING" && autofix_catalog()[3].scope == "ANY",
+          "каталог автоисправления: 4 записи из того же X-макроса");
     CHECK(is_return_const_stub(0x52800040, 0xD65F03C0) && !is_return_const_stub(0x52800040, 0xD65F03C1),
           "признак заглушки mov w0,#N; ret");
 }
@@ -411,6 +413,27 @@ static void test_forecast_parts() {
     sin.vulkan_module = "subsdk0";
     m = forecast_fixes(sin, s19);
     CHECK(by(m, "nvrm_query").choice == "proxy" && by(m, "nvrm_query").why == "StubVulkan", "прогноз: Vulkan -> графику не трогаем");
+    // Shrek 2 Remastered (библиотеки 21.4.2): main зовёт nn::nifm::GetNetworkAccessStatus; в 19.3.13 символа нет.
+    const std::string nifm = "_ZN2nn4nifm22GetNetworkAccessStatusEv";
+    ForecastGame shrek;
+    shrek.version = V{21, 4, 2};
+    shrek.imports = {{nifm, {"main"}}};
+    m = forecast_fixes(shrek, s19);
+    CHECK(by(m, "nifm_access_status").choice == "own" && by(m, "nifm_access_status").why == "SdkMissing" &&
+              by(m, "nifm_access_status").importers == std::vector<std::string>({"main"}),
+          "прогноз: Shrek 2 на 19.3.13 — nifm своя (0)");
+    ForecastSdk s21 = s19;
+    s21.version = V{21, 4, 2};
+    s21.exports = {{nifm, false}};
+    m = forecast_fixes(shrek, s21);
+    CHECK(by(m, "nifm_access_status").choice == "proxy" && by(m, "nifm_access_status").why == "SdkDefined",
+          "прогноз: родная 21.4.2 — nifm прокси");
+    // Пробел sdk для nifm теперь известен каталогу (не «не восполнит»).
+    ForecastGame sg = shrek;
+    sg.all_imports = {{nifm, {false, {"main"}}}};
+    sg.own_sdk = {{nifm, false}};
+    auto gp = sdk_gaps(sg.all_imports, sg.module_exports, s19.exports, sg.own_sdk);
+    CHECK(gp.size() == 1 && gp[0].fix && gp[0].fix->id == "nifm_access_status", "пробелы: nifm помечен записью каталога");
 }
 
 // Пробелы sdk (sdk_gaps) на синтетике: MISSING, STUB, каталог, закрытые модулями игры, слабые, нет в своей sdk.
@@ -1054,7 +1077,135 @@ static void test_harvest() {
     }
 }
 
+// ------------------------------------------------------------ поиск символов nn::ro (прогноз ApplyRoFix модуля)
+// Подставные данные: инструкции тех же видов, что в коде nnSdk (пролог, `ldr x0, [x1]`, `mov x1, x2`, `bl`; у F —
+// `ldr x8, [x0, #80]` или `ldrb w9, [x0, #195]`), и синтетический NSO с одним экспортом.
+namespace ro_t {
+constexpr uint32_t Stp32 = 0xA9BE7BFD, Stp80 = 0xA9BB7BFD, StpX20 = 0xA9014FF4, MovX29Sp = 0x910003FD,
+                   MovX19X0 = 0xAA0003F3, MovX20X1 = 0xAA0103F4, MovX19X1 = 0xAA0103F3, LdrX0X1 = 0xF9400020,
+                   MovX1X2 = 0xAA0203E1, LdrX8At80 = 0xF9402808, LdrbW9At195 = 0x39430C09;
+inline uint32_t Bl(uint64_t from, uint64_t to) { return 0x94000000u | (uint32_t((to - from) / 4) & 0x03FFFFFFu); }
+
+// NSO0 без сжатия: код LMS по 0x100, F по 0x140, .dynsym по 0x180 (один символ sym, GLOBAL FUNC, значение 0x100),
+// .dynstr по 0x200; gnu — DT_GNU_HASH в .dynamic (таблица на 1 ведро по 0x2C0).
+Bytes make_nso(const std::vector<uint32_t>& lms, const std::vector<uint32_t>& f, const std::string& sym, bool gnu) {
+    Bytes text(0x400, 0), ro(0x20, 0), data(0x10, 0);
+    wr32(&text[4], 0x10);
+    std::memcpy(&text[0x10], "MOD0", 4);
+    wr32(&text[0x14], 0x30);   // .dynamic по 0x40
+    std::vector<uint64_t> tags = {5, 0x200, 10, 0x80, 6, 0x180, 11, 24};
+    if (gnu) tags.insert(tags.end(), {uint64_t(kDtGnuHash), 0x2C0});
+    tags.insert(tags.end(), {0, 0});
+    for (size_t i = 0; i < tags.size(); i++) wr64(&text[0x40 + i * 8], tags[i]);
+    for (size_t i = 0; i < lms.size() && i < 16; i++) wr32(&text[0x100 + i * 4], lms[i]);
+    for (size_t i = 0; i < f.size() && i < 12; i++) wr32(&text[0x140 + i * 4], f[i]);
+    wr32(&text[0x198], 1);          // st_name
+    text[0x19C] = 0x12;             // GLOBAL FUNC
+    text[0x19E] = 1;                // st_shndx
+    wr64(&text[0x1A0], 0x100);      // st_value
+    wr64(&text[0x1A8], 0x40);       // st_size
+    std::memcpy(&text[0x201], sym.data(), std::min<size_t>(sym.size(), 0x70));
+    if (gnu) {
+        wr32(&text[0x2C0], 1);      // nbuckets
+        wr32(&text[0x2C4], 1);      // symoffset
+        wr32(&text[0x2D0], 1);      // bucket[0]
+        wr32(&text[0x2D4], 1);      // chain[0]: конец цепочки
+    }
+    const std::string nm = "nnSdk";
+    wr32(&ro[4], uint32_t(nm.size()));
+    std::memcpy(&ro[8], nm.data(), nm.size());
+    Bytes n(0x100, 0);
+    std::memcpy(n.data(), "NSO0", 4);
+    uint32_t off = 0x100, mem = 0;
+    Bytes* segs[3] = {&text, &ro, &data};
+    for (int i = 0; i < 3; i++) {
+        wr32(&n[0x10 + i * 0x10], off);
+        wr32(&n[0x14 + i * 0x10], mem);
+        wr32(&n[0x18 + i * 0x10], uint32_t(segs[i]->size()));
+        wr32(&n[0x60 + i * 4], uint32_t(segs[i]->size()));
+        off += uint32_t(segs[i]->size());
+        mem += uint32_t((segs[i]->size() + 0xFFF) & ~size_t(0xFFF));
+    }
+    for (Bytes* s : segs) n.insert(n.end(), s->begin(), s->end());
+    return n;
+}
+}  // namespace ro_t
+
+static void test_ro_lookup() {
+    using namespace ro_t;
+    const uint64_t at = 0x14b180, fa = 0x14b1e0;
+    const std::vector<uint32_t> lms = {Stp32, StpX20, MovX29Sp, MovX19X0, LdrX0X1, MovX20X1, MovX1X2, Bl(at + 7 * 4, fa)};
+    CHECK(ro_internal_lookup(lms.data(), lms.size(), at) == fa, "nn::ro: F — цель первого bl после ldr x0,[x1] и mov x1,x2");
+    auto noMov = lms;
+    noMov[6] = MovX20X1;
+    CHECK(ro_internal_lookup(noMov.data(), noMov.size(), at) == 0, "nn::ro: без mov x1,x2 перед bl — образец не узнан");
+    auto noObj = lms;
+    noObj[4] = MovX19X0;
+    CHECK(ro_internal_lookup(noObj.data(), noObj.size(), at) == 0, "nn::ro: без ldr x0,[x1] — образец не узнан");
+    CHECK(ro_internal_lookup(nullptr, 16, at) == 0, "nn::ro: нет кода — 0");
+    const uint64_t back = 0x1000;   // bl назад (отрицательное смещение)
+    const std::vector<uint32_t> lmsBack = {LdrX0X1, MovX1X2, Bl(0x2000 + 2 * 4, back)};
+    CHECK(ro_internal_lookup(lmsBack.data(), lmsBack.size(), 0x2000) == back, "nn::ro: bl назад — знак смещения");
+    const std::vector<uint32_t> fOld = {Stp80, StpX20, MovX29Sp, LdrX8At80, MovX19X1};
+    const std::vector<uint32_t> fNew = {Stp80, StpX20, MovX29Sp, LdrbW9At195, MovX19X1, LdrX8At80};
+    const std::vector<uint32_t> fOther = {Stp80, MovX29Sp, MovX19X1, MovX20X1};
+    CHECK(ro_lookup_sysv_only(fOld.data(), fOld.size()), "nn::ro: ldr [x0,#80] без флага — старая (только DT_HASH)");
+    CHECK(!ro_lookup_sysv_only(fNew.data(), fNew.size()), "nn::ro: сначала флаг [x0,#195] — знает DT_GNU_HASH");
+    CHECK(!ro_lookup_sysv_only(fOther.data(), fOther.size()), "nn::ro: непохожий код — не старая (модуль не трогает)");
+    CHECK(ro_lookup_kind(NsoImage(make_nso({Stp32, LdrX0X1, MovX1X2, Bl(0x100 + 3 * 4, 0x140)}, fOther,
+                                           kRoLookupModuleSymbol, false))) == "other",
+          "nn::ro по NSO: F без флага и без obj+80 -> other (не старая, но и не «знает GNU»)");
+
+    // Тот же разбор по файлу NSO: экспорт по 0x100, F по 0x140.
+    const std::vector<uint32_t> lmsF = {Stp32, LdrX0X1, MovX1X2, Bl(0x100 + 3 * 4, 0x140)};
+    const std::string LMS = kRoLookupModuleSymbol;
+    CHECK(ro_lookup_kind(NsoImage(make_nso(lmsF, fOld, LMS, false))) == "sysv_only", "nn::ro по NSO: старая F -> sysv_only");
+    CHECK(ro_lookup_kind(NsoImage(make_nso(lmsF, fNew, LMS, false))) == "gnu", "nn::ro по NSO: новая F -> gnu");
+    auto lmsBad = lmsF;
+    lmsBad[2] = MovX20X1;
+    CHECK(ro_lookup_kind(NsoImage(make_nso(lmsBad, fOld, LMS, false))) == "unknown", "nn::ro по NSO: образец не узнан -> unknown");
+    CHECK(ro_lookup_kind(NsoImage(make_nso(lmsF, fOld, "_ZN2nn2ro6OtherEv", false))) == "absent",
+          "nn::ro по NSO: нет LookupModuleSymbol -> absent");
+
+    // forecast_game: DT_GNU_HASH у модулей игры; forecast_sdk + forecast_ro_fix — вердикт.
+    char tmpl[] = "/tmp/mk-unit-rofix-XXXXXX";
+    std::string root = mkdtemp(tmpl);   // временное — остаётся (ничего не удаляем)
+    mkhost::StdFs sfs;
+    mkhost::Clock clk;
+    Env env{sfs, soft_hash(), clk};
+    auto put = [&](const std::string& p, const Bytes& b) {
+        sfs.make_dirs(path_parent(p));
+        sfs.write_file_replace(p, b.data(), b.size());
+    };
+    put(root + "/exefs/main", make_nso({}, {}, "game_main_fn", true));
+    put(root + "/exefs/subsdk0", make_nso({}, {}, "game_sub_fn", false));
+    put(root + "/sdk19", make_nso(lmsF, fOld, LMS, false));
+    put(root + "/sdk20", make_nso(lmsF, fNew, LMS, false));
+    const ForecastGame g = forecast_game(env, root + "/exefs");
+    CHECK(g.modules == std::vector<std::string>({"main", "subsdk0"}) && g.gnu_hash_modules == std::vector<std::string>({"main"}),
+          "nn::ro: модули игры прочитаны, DT_GNU_HASH — только у main");
+    const ForecastSdk s19 = forecast_sdk(env, root + "/sdk19"), s20 = forecast_sdk(env, root + "/sdk20");
+    RoFixForecast r = forecast_ro_fix(g, s19);
+    CHECK(s19.ro_lookup == "sysv_only" && r.verdict == "replace_gnu" && r.gnu_modules == std::vector<std::string>({"main"}) &&
+              r.modules == 2,
+          "nn::ro: старая sdk + DT_GNU_HASH у игры -> модуль подменит поиск");
+    CHECK(forecast_ro_fix(g, s20).verdict == "not_needed", "nn::ro: sdk знает DT_GNU_HASH -> не нужно");
+    ForecastGame noGnu = g;
+    noGnu.gnu_hash_modules.clear();
+    CHECK(forecast_ro_fix(noGnu, s19).verdict == "replace", "nn::ro: старая sdk, у игры только DT_HASH -> всё равно подменит");
+    ForecastSdk sx = s19;
+    sx.ro_lookup = "other";
+    CHECK(forecast_ro_fix(g, sx).verdict == "not_old", "nn::ro: F другого вида -> модуль не трогает");
+    sx.ro_lookup = "absent";
+    CHECK(forecast_ro_fix(g, sx).verdict == "no_ro", "nn::ro: нет nn::ro -> нечего подменять");
+    sx.ro_lookup = "unknown";
+    CHECK(forecast_ro_fix(g, sx).verdict == "unknown", "nn::ro: код не узнан -> unknown");
+    sx.ro_lookup.clear();
+    CHECK(forecast_ro_fix(g, sx).verdict.empty(), "nn::ro: не считалось (подставные списки) -> строки нет");
+}
+
 int main() {
+    test_ro_lookup();
     test_sha();
     test_bic_table();
     test_zstd_frames();

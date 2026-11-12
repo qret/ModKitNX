@@ -7,11 +7,11 @@
  * с asm-именами. Чистая логика — nxr_autofix.hpp (её гоняет хост-тест), свои
  * реализации — nxr_compat.hpp (сверены с оригиналом в эмуляторе).
  *
- * ПО УМОЛЧАНИЮ ВКЛЮЧЕНО. Каждая сборка модуля экспортирует три символа из
+ * ПО УМОЛЧАНИЮ ВКЛЮЧЕНО. Каждая сборка модуля экспортирует все символы
  * каталога (nxr_autofix_catalog.h), но каждый экспорт — ПРОКСИ С ЗАПАСОМ: при
  * первом вызове решает (nxr::autofix::Decide), отдать вызов настоящей функции
  * загруженной `sdk` или работать своей реализацией. Поэтому один и тот же
- * модуль безопасен и на консоли с родной библиотекой (там все три уходят в
+ * модуль безопасен и на консоли с родной библиотекой (там все уходят в
  * sdk), и на консоли с подменённой (там включается своё).
  *
  * Выключить целиком — ключ сборки -DNXR_NO_AUTOFIX (конвейер: --no-autofix):
@@ -28,6 +28,7 @@
  *   __hash_memory(const void*, size_t) -> size_t           x0, x1      -> x0
  *   nn::ldn::SetProtocol(Protocol)     -> nn::Result (u32) w0          -> w0
  *   NvRmMemQueryHandleParams(u32, void*, void*, u32) -> u32 w0, x1, x2, w3 -> w0
+ *   nn::nifm::GetNetworkAccessStatus()  -> 32 бита     (нет)       -> w0
  * Аргументов меньше восьми, плавающих нет, результат — скаляр в x0/w0 (не
  * через x8), значит ни стек, ни x8 в передаче не участвуют; вызываемая функция
  * сохраняет x19..x28 сама. Сверка на ПК: hosttest/run_autofix.py вызывает наш
@@ -216,6 +217,29 @@ std::uint32_t nxr_compat_nvrm_query(std::uint32_t handle, void* p1, void* out, s
              reinterpret_cast<std::uint64_t>(__builtin_return_address(0)));
     }
     return rc;
+}
+
+/* --------------------------------------------- nn::nifm::GetNetworkAccessStatus */
+/*
+ * Своя — 0 и ничего больше (ни svc, ни IPC): так отвечает сама 21.4.2, когда
+ * объект службы nifm получить не удалось («состояние сети не узнали»).
+ * Включается, только когда в sdk символа НЕТ (3.8.0…20.5.17: без нас rtld
+ * оставил бы ноль, Shrek 2 Remastered падал PC = 0 при вызове из main). Есть в
+ * sdk (21.4.2+) — вызов уходит в неё.
+ */
+extern "C" __attribute__((visibility("default"), used, noinline))
+std::uint32_t nxr_compat_nifm_access_status()
+    asm("_ZN2nn4nifm22GetNetworkAccessStatusEv");
+
+std::uint32_t nxr_compat_nifm_access_status() {
+    using namespace nxr::autofix;
+    const Resolution r = Resolve(FixNifmAccessStatus);
+    NoteCall(FixNifmAccessStatus);
+    if (r.choice == Choice::Proxy && r.target != 0) {
+        using Fn = std::uint32_t (*)();
+        return reinterpret_cast<Fn>(static_cast<std::uintptr_t>(r.target))();
+    }
+    return 0;   /* как 21.4.2 без службы nifm */
 }
 
 #endif  /* NXR_NO_AUTOFIX */

@@ -460,7 +460,7 @@ void GameActivity::refreshFixes() {
 
     // Человеческие названия и пояснения — только для записей, известных этой версии; новая запись каталога
     // показывается своим id, пока к ней не добавят строки.
-    static const char* kNamed[] = {"hash_memory", "ldn_set_protocol", "nvrm_query"};
+    static const char* kNamed[] = {"hash_memory", "ldn_set_protocol", "nvrm_query", "nifm_access_status"};
     auto nameOf = [](const std::string& id) {
         for (const char* n : kNamed)
             if (id == n) return tr("fixes/name_" + id);
@@ -499,6 +499,7 @@ void GameActivity::refreshFixes() {
             std::string note;
             if (l.id == "nvrm_query" && l.why == "StubOlderSdk") note = tr("fixes/note_nvrm_query");
             if (l.id == "ldn_set_protocol") note = tr("fixes/note_ldn_set_protocol");
+            if (l.id == "nifm_access_status") note = tr("fixes/note_nifm_access_status");
             if (!note.empty()) act += " (" + note + ")";
             addSubLine(sc, nameOf(l.id) + " — " + act, colText(), 19);
         }
@@ -556,6 +557,29 @@ void GameActivity::refreshFixes() {
         if (!l.importers.empty()) {
             if (l.choice == "own") blk.tone = Tone::Ok;
             else if (l.why == "StubNoVersion" || l.why == "NoSdkDefined") blk.tone = Tone::Warn;
+        }
+        tech.blocks.push_back(std::move(blk));
+    }
+    // Поиск символов nn::ro — одной строкой (mk::forecast_ro_fix; та же строка — в sdk-check.txt).
+    if (!f->ro.verdict.empty()) {
+        std::string gnu;
+        for (const auto& m : f->ro.gnuModules) gnu += (gnu.empty() ? "" : ", ") + m;
+        const std::string& v = f->ro.verdict;
+        SheetBlock blk;
+        blk.title = tr("fixes/ro_title");
+        if (v == "replace_gnu") {
+            blk.lines = {trf("fixes/ro_replace_gnu", ver, gnu)};
+            blk.tone = Tone::Ok;
+        } else if (v == "replace") {
+            blk.lines = {trf("fixes/ro_replace", ver)};
+        } else if (v == "not_needed") {
+            blk.lines = {trf("fixes/ro_not_needed", ver)};
+        } else if (v == "not_old") {
+            blk.lines = {trf("fixes/ro_not_old", ver)};
+        } else if (v == "no_ro") {
+            blk.lines = {trf("fixes/ro_no_ro", ver)};
+        } else {
+            blk.lines = {trf("fixes/ro_unknown", ver)};
         }
         tech.blocks.push_back(std::move(blk));
     }

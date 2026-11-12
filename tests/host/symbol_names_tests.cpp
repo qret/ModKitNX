@@ -70,7 +70,8 @@ int main() {
         struct T { std::string key, fallback; bool empty() const { return key.empty() && fallback.empty(); } };
         struct Fx { std::string id, symbol, choice, why; std::vector<std::string> importers; };
         struct Gp { std::string symbol, kind; bool weak; std::vector<std::string> importers; std::string readable, online; };
-        struct Fc { bool ok; std::string sdkVersion; bool sdkKnown, swapped; std::vector<Fx> fixes; std::vector<Gp> gaps; T error; };
+        struct Ro { std::string verdict; std::vector<std::string> gnuModules; int modules = 0; };
+        struct Fc { bool ok; std::string sdkVersion; bool sdkKnown, swapped; std::vector<Fx> fixes; std::vector<Gp> gaps; T error; Ro ro; };
         struct Fb { bool gameOk; std::string gameVersion; bool vulkan, opengl, ownSdkOk; std::string ownSdkError; Fc current; bool currentIsSwap; };
         Fb f {true, "", false, true, true, "", {}, true};
         f.current.ok = true;
@@ -87,8 +88,22 @@ int main() {
         CHECK(t.find("зовут: main") != std::string::npos, "sdk-check: кто зовёт");
         CHECK(t.find("библиотеки SDK игры: не прочитаны") != std::string::npos, "sdk-check: версия не прочитана — так и пишется");
         CHECK(t.find("подменённая на карте") != std::string::npos, "sdk-check: sdk сейчас — подменённая");
+        CHECK(t.find("поиск символов nn::ro") == std::string::npos, "sdk-check: строки nn::ro нет, пока не считалась");
         f.current.gaps.clear();
         CHECK(mk::app::sdkCheckText(f).find("не восполнит: нет") != std::string::npos, "sdk-check: пробелов нет");
+        // Строка поиска символов nn::ro (та же, что в «Технических подробностях»).
+        f.current.ro = {"replace_gnu", {"main", "subsdk0"}, 5};
+        std::string r = mk::app::sdkCheckText(f);
+        CHECK(r.find("поиск символов nn::ro: sdk 19.3.13 знает только старую таблицу символов (DT_HASH); у модулей игры — "
+                     "DT_GNU_HASH (main, subsdk0); модуль подменит поиск [replace_gnu, модулей игры 5]") != std::string::npos,
+              "sdk-check: nn::ro — старая sdk, DT_GNU_HASH у игры, модуль подменит");
+        f.current.ro = {"not_needed", {"main"}, 1};
+        r = mk::app::sdkCheckText(f);
+        CHECK(r.find("sdk 19.3.13 знает DT_GNU_HASH — подменять поиск не нужно") != std::string::npos &&
+                  r.find("подменит") == std::string::npos,
+              "sdk-check: nn::ro — не нужно");
+        f.current.ro = {"unknown", {}, 1};
+        CHECK(mk::app::sdkCheckText(f).find("не узнан") != std::string::npos, "sdk-check: nn::ro — код не узнан");
     }
 
     std::printf("symbol_names: %d passed, %d failed\n", g_pass, g_fail);

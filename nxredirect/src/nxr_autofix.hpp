@@ -79,15 +79,16 @@ inline constexpr FixInfo Catalog[] = {
 inline constexpr int FixCount = static_cast<int>(sizeof(Catalog) / sizeof(Catalog[0]));
 
 /* Индексы — в порядке каталога; совпадение имён проверяется при компиляции. */
-enum FixIndex : int { FixHashMemory = 0, FixLdnSetProtocol = 1, FixNvrmQuery = 2 };
+enum FixIndex : int { FixHashMemory = 0, FixLdnSetProtocol = 1, FixNvrmQuery = 2, FixNifmAccessStatus = 3 };
 
 constexpr bool StrEq(const char* a, const char* b) {
     return *a == *b && (*a == '\0' || StrEq(a + 1, b + 1));
 }
-static_assert(FixCount == 3, "каталог изменился — обнови FixIndex и экспорты");
+static_assert(FixCount == 4, "каталог изменился — обнови FixIndex и экспорты");
 static_assert(StrEq(Catalog[FixHashMemory].symbol, "_ZNSt3__113__hash_memoryEPKvm"), "порядок каталога");
 static_assert(StrEq(Catalog[FixLdnSetProtocol].symbol, "_ZN2nn3ldn11SetProtocolENS0_8ProtocolE"), "порядок каталога");
 static_assert(StrEq(Catalog[FixNvrmQuery].symbol, "NvRmMemQueryHandleParams"), "порядок каталога");
+static_assert(StrEq(Catalog[FixNifmAccessStatus].symbol, "_ZN2nn4nifm22GetNetworkAccessStatusEv"), "порядок каталога");
 
 /* Имена, по которым модуль опознаёт окружение. */
 inline constexpr char SdkModuleName[]  = "nnSdk";

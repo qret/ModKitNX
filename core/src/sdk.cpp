@@ -274,6 +274,8 @@ ForecastGame forecast_game(Env& env, const std::string& exefs) {
     std::set<std::string> exports;
     for (auto& [nm, p] : game_files(env.fs, exefs)) {
         NsoImage n = load(env, p);
+        g.modules.push_back(nm);
+        if (n.dt.count(kDtGnuHash)) g.gnu_hash_modules.push_back(nm);
         auto v = n.mw_version();
         if (v && (!g.version || *v > *g.version)) g.version = v;
         auto ex = n.exports();
@@ -310,7 +312,72 @@ ForecastSdk forecast_sdk(Env& env, const std::string& sdk_path) {
     s.known = s.name && *s.name == kSdkName;
     s.version = sdk.mw_version();
     s.exports = export_stubs(sdk);
+    s.ro_lookup = ro_lookup_kind(sdk);
     return s;
+}
+
+// ------------------------------------------------------------ поиск символов nn::ro
+uint64_t ro_internal_lookup(const uint32_t* code, size_t words, uint64_t addr) {
+    if (!code) return 0;
+    bool sawObj = false;
+    for (size_t i = 0; i < words; ++i) {
+        const uint32_t w = code[i];
+        if (w == 0xF9400020u) sawObj = true;                       // ldr x0, [x1]
+        if ((w & 0xFC000000u) == 0x94000000u) {                     // bl
+            if (!sawObj || i == 0 || code[i - 1] != 0xAA0203E1u)   // mov x1, x2
+                return 0;
+            int64_t imm = int64_t(w & 0x03FFFFFFu);
+            if (imm & 0x02000000) imm -= 0x04000000;
+            return addr + uint64_t(i) * 4 + uint64_t(imm * 4);
+        }
+    }
+    return 0;
+}
+
+bool ro_lookup_sysv_only(const uint32_t* code, size_t words) {
+    if (!code) return false;
+    for (size_t i = 0; i < words; ++i) {
+        const uint32_t w = code[i];
+        if ((w & 0xFFFFFFE0u) == 0x39430C00u) return false;   // ldrb w?, [x0, #195] — флаг DT_GNU_HASH (20.x)
+        if ((w & 0xFFFFFFE0u) == 0xF9402800u) return true;    // ldr x?, [x0, #80] — вёдра DT_HASH
+    }
+    return false;
+}
+
+std::string ro_lookup_kind(const NsoImage& sdk) {
+    const auto ex = sdk.exports();
+    auto it = ex.find(kRoLookupModuleSymbol);
+    if (it == ex.end() || it->second.value == 0) return "absent";
+    auto words = [&](uint64_t addr, size_t n) {
+        Bytes b = sdk.mem(addr, n * 4);
+        std::vector<uint32_t> w(n, 0);
+        for (size_t i = 0; i < n && (i + 1) * 4 <= b.size(); ++i) w[i] = rd32(b.data() + i * 4);
+        return w;
+    };
+    const uint64_t lms = it->second.value;
+    const auto lc = words(lms, 16);
+    const uint64_t f = ro_internal_lookup(lc.data(), lc.size(), lms);
+    if (f == 0) return "unknown";
+    const auto fc = words(f, 12);
+    if (ro_lookup_sysv_only(fc.data(), fc.size())) return "sysv_only";
+    // Не старая — модулю этого достаточно; «знает DT_GNU_HASH» говорим, только если виден флаг obj+195 (20.x).
+    for (uint32_t w : fc) {
+        if ((w & 0xFFFFFFE0u) == 0x39430C00u) return "gnu";
+        if ((w & 0xFFFFFFE0u) == 0xF9402800u) break;
+    }
+    return "other";
+}
+
+RoFixForecast forecast_ro_fix(const ForecastGame& game, const ForecastSdk& sdk) {
+    RoFixForecast r;
+    r.modules = int(game.modules.size());
+    r.gnu_modules = game.gnu_hash_modules;
+    if (sdk.ro_lookup == "absent") r.verdict = "no_ro";
+    else if (sdk.ro_lookup == "unknown") r.verdict = "unknown";
+    else if (sdk.ro_lookup == "gnu") r.verdict = "not_needed";
+    else if (sdk.ro_lookup == "other") r.verdict = "not_old";
+    else if (sdk.ro_lookup == "sysv_only") r.verdict = r.gnu_modules.empty() ? "replace" : "replace_gnu";
+    return r;
 }
 
 std::vector<SdkGap> sdk_gaps(const std::map<std::string, GameImport>& imports, const std::set<std::string>& game_exports,

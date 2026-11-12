@@ -2146,11 +2146,12 @@ namespace gfx {
         WriteText("");
         WriteText("--- символы совместимости: по какому адресу они разрешились ---");
         {
-            static const char* const compat[2] = {
+            static const char* const compat[3] = {
                 "_ZNSt3__113__hash_memoryEPKvm",
                 "_ZN2nn3ldn11SetProtocolENS0_8ProtocolE",
+                "_ZN2nn4nifm22GetNetworkAccessStatusEv",
             };
-            for (int i = 0; i < 2; ++i) {
+            for (int i = 0; i < 3; ++i) {
                 const std::uint64_t a = resolve(compat[i]);
                 buf.Reset();
                 buf.Add(a != 0 ? MarkOk : MarkFail);

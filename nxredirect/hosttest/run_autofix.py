@@ -17,6 +17,8 @@ svcQueryMemory (svc 0x6) отвечает по этой раскладке. На
   - __hash_memory: в sdk 22.2.0 ушёл в её функцию (вход в sdk пойман), в
     19.3.13/20.5.17 — своя; значение сверяется с НАСТОЯЩЕЙ 22.2.0;
   - nn::ldn::SetProtocol: вход в sdk перехватывается, аргумент сверяется;
+  - nn::nifm::GetNetworkAccessStatus: вход в sdk перехватывается (ответ-метка),
+    своя обязана вернуть 0 и не звать ничего;
   - NvRmMemQueryHandleParams: настоящая 22.2.0 — перехват входа, регистры
     x0..x3 сверяются (соглашение о вызове прокси); заглушка — выполняется как
     есть (ответ 2); своя — зовёт NvRm_MemmgrGetIoctlFile и NvOsDrvIoctl этой
@@ -63,11 +65,13 @@ SDKS = {
 SYM_HASH = "_ZNSt3__113__hash_memoryEPKvm"
 SYM_LDN = "_ZN2nn3ldn11SetProtocolENS0_8ProtocolE"
 SYM_NVRM = "NvRmMemQueryHandleParams"
+SYM_NIFM = "_ZN2nn4nifm22GetNetworkAccessStatusEv"
 SYM_GETFD = "NvRm_MemmgrGetIoctlFile"
 SYM_IOCTL = "NvOsDrvIoctl"
 MARKER = "nxr_autofix_state_v1"
-FIXES = ["hash_memory", "ldn_set_protocol", "nvrm_query"]
-FIX_SYM = {"hash_memory": SYM_HASH, "ldn_set_protocol": SYM_LDN, "nvrm_query": SYM_NVRM}
+FIXES = ["hash_memory", "ldn_set_protocol", "nvrm_query", "nifm_access_status"]
+FIX_SYM = {"hash_memory": SYM_HASH, "ldn_set_protocol": SYM_LDN, "nvrm_query": SYM_NVRM,
+           "nifm_access_status": SYM_NIFM}
 
 CHOICE = {0: "unresolved", 1: "own", 2: "proxy"}
 WHY = {0: "None", 1: "SdkMissing", 2: "SdkDefined", 3: "SdkReal", 4: "StubOlderSdk",
@@ -75,22 +79,30 @@ WHY = {0: "None", 1: "SdkMissing", 2: "SdkDefined", 3: "SdkReal", 4: "StubOlderS
        9: "NoSdkDefined", 10: "TargetTooFar"}
 
 # (игра, sdk) -> {исправление: (choice, why)}
+# nifm_access_status: символа нет ни в одной sdk 3.8.0…20.5.17 -> своя. Для 22.2.0
+# ожидания нет: символ есть в 21.4.2, но nnSdk 22.2.0 в папке sdk сейчас нет и
+# разбором не проверялся — запись в UNCHECKED, сценарий её не судит.
+UNCHECKED = {"22.2.0": {"nifm_access_status"}}
 EXPECT = {
     ("WD-patch", "19.3.13"): {"hash_memory": ("own", "SdkMissing"),
                               "ldn_set_protocol": ("own", "SdkMissing"),
-                              "nvrm_query": ("own", "StubOlderSdk")},
+                              "nvrm_query": ("own", "StubOlderSdk"),
+                              "nifm_access_status": ("own", "SdkMissing")},
     ("WD-patch", "20.5.17"): {"hash_memory": ("own", "SdkMissing"),
                               "ldn_set_protocol": ("proxy", "SdkDefined"),
-                              "nvrm_query": ("own", "StubOlderSdk")},
+                              "nvrm_query": ("own", "StubOlderSdk"),
+                              "nifm_access_status": ("own", "SdkMissing")},
     ("WD-patch", "22.2.0"): {"hash_memory": ("proxy", "SdkDefined"),
                              "ldn_set_protocol": ("proxy", "SdkDefined"),
                              "nvrm_query": ("proxy", "SdkReal")},
     ("SIN-patch", "19.3.13"): {"hash_memory": ("own", "SdkMissing"),
                                "ldn_set_protocol": ("own", "SdkMissing"),
-                               "nvrm_query": ("proxy", "StubVulkan")},
+                               "nvrm_query": ("proxy", "StubVulkan"),
+                               "nifm_access_status": ("own", "SdkMissing")},
     ("SIN-patch", "20.5.17"): {"hash_memory": ("own", "SdkMissing"),
                                "ldn_set_protocol": ("proxy", "SdkDefined"),
-                               "nvrm_query": ("proxy", "StubVulkan")},
+                               "nvrm_query": ("proxy", "StubVulkan"),
+                               "nifm_access_status": ("own", "SdkMissing")},
     ("SIN-patch", "22.2.0"): {"hash_memory": ("proxy", "SdkDefined"),
                               "ldn_set_protocol": ("proxy", "SdkDefined"),
                               "nvrm_query": ("proxy", "SdkReal")},
@@ -98,12 +110,14 @@ EXPECT = {
     # NvRm — её родное поведение, своя включаться НЕ должна.
     ("TOTK-patch", "19.3.13"): {"hash_memory": ("own", "SdkMissing"),
                                 "ldn_set_protocol": ("own", "SdkMissing"),
-                                "nvrm_query": ("proxy", "StubNative")},
+                                "nvrm_query": ("proxy", "StubNative"),
+                                "nifm_access_status": ("own", "SdkMissing")},
 }
 
 PAGE = 0x1000
 SENT_LDN = 0x0C0DE000
 SENT_NVRM = 0xBEEF
+SENT_NIFM = 0x0A11CE
 NVRM_FD = 7
 NVRM_VALUE = 0x3FC000
 
@@ -267,7 +281,7 @@ class Watch:
         self.log = {}
         sdk = proc.mod(sdk_name)
         self.addr = {s: proc.addr_of(sdk_name, s)
-                     for s in (SYM_HASH, SYM_LDN, SYM_NVRM, SYM_GETFD, SYM_IOCTL)}
+                     for s in (SYM_HASH, SYM_LDN, SYM_NVRM, SYM_NIFM, SYM_GETFD, SYM_IOCTL)}
         self.nvrm_is_stub = False
         a = self.addr[SYM_NVRM]
         if a:
@@ -299,6 +313,8 @@ class Watch:
             if sym == SYM_LDN:
                 self.log[sym] = x[0] & 0xFFFFFFFF
                 ret(SENT_LDN | (x[0] & 0xFFF))
+            elif sym == SYM_NIFM:
+                ret(SENT_NIFM)
             elif sym == SYM_NVRM and not self.nvrm_is_stub:
                 self.log[sym] = (x[0] & 0xFFFFFFFF, x[1], x[2], x[3] & 0xFFFFFFFF)
                 ret(SENT_NVRM)
@@ -350,7 +366,7 @@ def read_state(p, mod="subsdk9"):
     a = p.addr_of(mod, MARKER)
     if not a:
         return None
-    words = struct.unpack("<QQQ", bytes(p.uc.mem_read(a, 24)))
+    words = struct.unpack("<%dQ" % len(FIXES), bytes(p.uc.mem_read(a, 8 * len(FIXES))))
     out = {}
     for fix, w in zip(FIXES, words):
         out[fix] = (CHOICE.get((w >> 48) & 0xFF, "?"), WHY.get((w >> 56) & 0xFF, "?"),
@@ -365,7 +381,7 @@ def run_scenario(module, exefs, sdk_ver, refs, patches=(), twin=False, weak=Fals
     sdk_path = SDK_DIR / SDKS[sdk_ver]
     p = build_proc(module, exefs, sdk_path, patches, twin)
     w = Watch(p)
-    ours = {s: p.addr_of("subsdk9", s) for s in (SYM_HASH, SYM_LDN, SYM_NVRM)}
+    ours = {s: p.addr_of("subsdk9", s) for s in (SYM_HASH, SYM_LDN, SYM_NVRM, SYM_NIFM)}
     if not all(ours.values()) or not p.addr_of("subsdk9", MARKER):
         return ["в модуле нет экспортов автоисправления (сборка без него?)"], 1
 
@@ -392,6 +408,14 @@ def run_scenario(module, exefs, sdk_ver, refs, patches=(), twin=False, weak=Fals
         return bad + ["ldn: вызов упал: %s" % e], checks + 1
     ldn_entered, ldn_arg = w.hits.get(SYM_LDN, 0) > 0, w.log.get(SYM_LDN)
 
+    # --- nn::nifm::GetNetworkAccessStatus
+    w.reset()
+    try:
+        nifm_rc = p.call(ours[SYM_NIFM], []) & 0xFFFFFFFF
+    except Exception as e:
+        return bad + ["nifm: вызов упал: %s" % e], checks + 1
+    nifm_entered = w.hits.get(SYM_NIFM, 0) > 0
+
     # --- NvRmMemQueryHandleParams
     w.reset()
     out = p.data + 0x800
@@ -411,6 +435,8 @@ def run_scenario(module, exefs, sdk_ver, refs, patches=(), twin=False, weak=Fals
     state = read_state(p)
     exp = expect if expect is not None else EXPECT[(exefs.name, sdk_ver)]
     for fix in FIXES:
+        if fix not in exp:
+            continue   # UNCHECKED: ожидания для этой sdk нет
         checks += 1
         got = state[fix][:2] if state else None
         if got != exp[fix]:
@@ -424,6 +450,8 @@ def run_scenario(module, exefs, sdk_ver, refs, patches=(), twin=False, weak=Fals
     # Путь вызова обязан совпасть с решением.
     def path_check(fix, entered, label):
         nonlocal checks
+        if fix not in exp:
+            return
         checks += 1
         want_proxy = exp[fix][0] == "proxy"
         if entered != want_proxy:
@@ -432,6 +460,13 @@ def run_scenario(module, exefs, sdk_ver, refs, patches=(), twin=False, weak=Fals
     path_check("hash_memory", hash_entered, "hash")
     path_check("ldn_set_protocol", ldn_entered, "ldn")
     path_check("nvrm_query", nv_hits.get(SYM_NVRM, 0) > 0, "nvrm")
+    path_check("nifm_access_status", nifm_entered, "nifm")
+
+    if "nifm_access_status" in exp:
+        checks += 1
+        want = SENT_NIFM if exp["nifm_access_status"][0] == "proxy" else 0
+        if nifm_rc != want:
+            bad.append("nifm: вернула %#x, ждали %#x" % (nifm_rc, want))
 
     checks += 1
     if exp["ldn_set_protocol"][0] == "proxy":
@@ -515,7 +550,8 @@ def main():
                           patches=[("sdk", name_off, b"nnSdX")],
                           expect={"hash_memory": ("own", "NoSdkMissing"),
                                   "ldn_set_protocol": ("own", "NoSdkMissing"),
-                                  "nvrm_query": ("proxy", "NoSdkDefined")}, quiet=True)
+                                  "nvrm_query": ("proxy", "NoSdkDefined"),
+                                  "nifm_access_status": ("own", "NoSdkMissing")}, quiet=True)
     say("   sdk не опознан (имя «nnSdX»): %s" % ("ЗЕЛЕНО" if not bad else "КРАСНО: " + "; ".join(bad)))
     total_bad += bad
     total_checks += n
@@ -526,7 +562,8 @@ def main():
                           patches=[("sdk", name_off, b"nnSdX")], twin=True,
                           expect={"hash_memory": ("own", "NoSdkMissing"),
                                   "ldn_set_protocol": ("own", "NoSdkMissing"),
-                                  "nvrm_query": ("proxy", "NoSdkDefined")}, quiet=True)
+                                  "nvrm_query": ("proxy", "NoSdkDefined"),
+                                  "nifm_access_status": ("own", "NoSdkMissing")}, quiet=True)
     say("   два экземпляра nxredirect: %s" % ("ЗЕЛЕНО" if not bad else "КРАСНО: " + "; ".join(bad)))
     total_bad += bad
     total_checks += n
@@ -579,7 +616,8 @@ def self_test(module, root, refs, name_off, noautofix):
             if twin:
                 exp = {"hash_memory": ("own", "NoSdkMissing"),
                        "ldn_set_protocol": ("own", "NoSdkMissing"),
-                       "nvrm_query": ("proxy", "NoSdkDefined")}
+                       "nvrm_query": ("proxy", "NoSdkDefined"),
+                                  "nifm_access_status": ("own", "NoSdkMissing")}
             try:
                 real_bad, _ = run_scenario(module, exefs, ver, refs, patches=patches, twin=twin,
                                            expect=exp, quiet=True)

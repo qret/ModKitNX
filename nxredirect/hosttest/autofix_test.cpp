@@ -47,6 +47,7 @@ static void TestDecide() {
     const FixInfo& hash = Catalog[FixHashMemory];
     const FixInfo& ldn  = Catalog[FixLdnSetProtocol];
     const FixInfo& nvrm = Catalog[FixNvrmQuery];
+    const FixInfo& nifm = Catalog[FixNifmAccessStatus];
     const std::uint32_t v19 = EncodeVersion(19, 3, 13), v20 = EncodeVersion(20, 5, 17),
                         v22 = EncodeVersion(22, 2, 0), v15 = EncodeVersion(15, 3, 1);
     struct Row {
@@ -87,6 +88,12 @@ static void TestDecide() {
          "nvrm: sdk не опознан -> как без нас"},
         {&hash, {false, 0, false, 0, 0, false}, Choice::Own, Why::NoSdkMissing,
          "hash: sdk не опознан и нигде нет -> своя"},
+        {&nifm, {true, 0, false, v19, EncodeVersion(21, 4, 2), false}, Choice::Own, Why::SdkMissing,
+         "nifm: Shrek 2 (21.4.2) на 19.3.13 без символа -> своя (0)"},
+        {&nifm, {true, 0x3fdf90, false, EncodeVersion(21, 4, 2), EncodeVersion(21, 4, 2), false},
+         Choice::Proxy, Why::SdkDefined, "nifm: родная 21.4.2 -> прокси"},
+        {&nifm, {true, 0x3fdf90, true, v20, v22, false}, Choice::Proxy, Why::SdkDefined,
+         "nifm: MISSING, в sdk даже «вернуть константу» -> прокси (родное)"},
     };
     for (const Row& r : rows) {
         const Resolution got = Decide(*r.fix, r.f);
@@ -286,6 +293,11 @@ static void TestPassportText() {
     f.res[FixHashMemory] = {Choice::Own, Why::SdkMissing, 0};
     f.res[FixLdnSetProtocol] = {Choice::Own, Why::SdkMissing, 0};
     f.res[FixNvrmQuery] = {Choice::Own, Why::StubOlderSdk, 0};
+    f.res[FixNifmAccessStatus] = {Choice::Own, Why::SdkMissing, 0};
+    f.roFixText = "СВОЙ — sdk ищет только по DT_HASH: поиск nn::ro подменён (модули из снимка и подгруженные позже)";
+    f.roSnapModules = 5;
+    f.roSnapGnu = 5;
+    f.nvrmPathText = "ЗАПАСНОЙ ПУТЬ: экспорт не выиграл, заглушка sdk заменена переходом на нашу функцию";
     static TextBuf<0x1000> b;
     FormatPassport(b, f);
     const std::string s(b.Data(), b.Size());
@@ -294,6 +306,7 @@ static void TestPassportText() {
     Expect(s.find("7BBA185A") != std::string::npos, "паспорт: BuildId");
     Expect(s.find("ДА — sdk старше") != std::string::npos, "паспорт: подмена видна");
     Expect(s.find("nvrm_query: СВОЯ") != std::string::npos, "паспорт: решения по исправлениям");
+    Expect(s.find("nifm_access_status: СВОЯ") != std::string::npos, "паспорт: строка nifm (цикл по каталогу)");
     Expect(s.find("\r\n") != std::string::npos, "паспорт: строки CRLF");
     Expect(b.Size() < 0x1000 - 8, "паспорт помещается в буфер");
 }

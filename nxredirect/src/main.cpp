@@ -117,7 +117,8 @@
 
 /*
  * Расхождения чужой `sdk`: std::__1::__hash_memory, nn::ldn::SetProtocol,
- * NvRmMemQueryHandleParams. Теперь — АВТОИСПРАВЛЕНИЕ: все три экспорта
+ * NvRmMemQueryHandleParams, nn::nifm::GetNetworkAccessStatus. Теперь —
+ * АВТОИСПРАВЛЕНИЕ: все экспорты каталога
  * есть в каждой сборке, но каждый — прокси с запасом: при первом вызове
  * смотрит, что лежит в загруженной `sdk`, и либо зовёт её настоящую функцию
  * (родная библиотека — поведение как без мода), либо работает своей
@@ -235,7 +236,7 @@ namespace {
 
     const char* RoFixText() {
         switch (g_RoFix) {
-            case 1: return "не нужно (sdk знает DT_GNU_HASH)";
+            case 1: return "не нужно (поиск nn::ro в sdk не старого вида: не только DT_HASH)";
             case 2: return "СВОЙ — sdk ищет только по DT_HASH: поиск nn::ro подменён (модули из снимка и подгруженные позже)";
             case 3: return "НЕ ПОСТАВЛЕН — код nn::ro::LookupModuleSymbol не узнан";
             default: return nullptr;

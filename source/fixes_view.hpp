@@ -31,6 +31,10 @@ inline FixForecastView fixesView(const mk::ForecastGame& game, const mk::Forecas
         l.own = f.fix.own;
         v.fixes.push_back(std::move(l));
     }
+    const mk::RoFixForecast ro = mk::forecast_ro_fix(game, sdk);
+    v.ro.verdict = ro.verdict;
+    v.ro.gnuModules = ro.gnu_modules;
+    v.ro.modules = ro.modules;
     // Пробелы sdk, которые модуль не восполнит: только то, чего нет в каталоге.
     if (game.own_sdk_ok)
         for (const auto& g : mk::sdk_gaps(game.all_imports, game.module_exports, sdk.exports, game.own_sdk)) {
