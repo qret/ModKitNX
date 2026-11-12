@@ -235,8 +235,8 @@ namespace {
 
     const char* RoFixText() {
         switch (g_RoFix) {
-            case 1: return "не нужно (sdk знает DT_GNU_HASH или его нет ни у одного модуля)";
-            case 2: return "СВОЙ — sdk ищет только по DT_HASH, у модулей игры DT_GNU_HASH: поиск nn::ro подменён";
+            case 1: return "не нужно (sdk знает DT_GNU_HASH)";
+            case 2: return "СВОЙ — sdk ищет только по DT_HASH: поиск nn::ro подменён (модули из снимка и подгруженные позже)";
             case 3: return "НЕ ПОСТАВЛЕН — код nn::ro::LookupModuleSymbol не узнан";
             default: return nullptr;
         }
@@ -1644,8 +1644,8 @@ void InstallMountHooks() {
  * модуле только по DT_HASH; у модулей игры на SDK 20+ есть DT_GNU_HASH, и rtld
  * кладёт в ModuleObject GNU-таблицу — nn::ro::LookupSymbol падал (Biped 2).
  * Подменяем внутреннюю функцию поиска одного модуля: модуль из снимка — свой
- * перебор .dynsym, не из снимка — оригинал.
- * Ставится, только если функция старая И есть модуль с DT_GNU_HASH. Трамплин — один
+ * перебор .dynsym, не из снимка (NRO) — разбор по его базе без ядра, не разобрался — оригинал.
+ * Ставится всегда, когда функция старая (модуль с DT_GNU_HASH может подгрузиться позже). Трамплин — один
  * (бюджет: nxr_gfx.hpp, HooksOutsideGfx).
  */
 namespace {
@@ -1660,13 +1660,18 @@ HOOK_DEFINE_TRAMPOLINE(RoLookupHook) {
             ? *reinterpret_cast<const std::uint64_t*>(
                   static_cast<const std::uint8_t*>(obj) + nxr::rofix::ModuleObjectBase)
             : 0;
-        /* Модуль из снимка — всегда свой поиск: хеш-полям ModuleObject старая sdk
-           не верит (nxr_rofix.hpp, «НЕ есть DT_HASH»). Не из снимка — оригинал. */
+        /* Модуль из снимка — свой поиск (хеш-полям ModuleObject не верим, nxr_rofix.hpp).
+           Не из снимка (подгружен позже, NRO) — разбор по его базе без ядра; не
+           разобрался — оригинал, как без исправления. */
         const nxr::rofix::ModuleTables* m = g_RoSnapshot.Find(base);
-        if (m == nullptr) {
-            return Orig(obj, name);
+        if (m != nullptr) {
+            return nxr::rofix::FindDefinedSym(*m, name);
         }
-        return nxr::rofix::FindDefinedSym(*m, name);
+        nxr::rofix::ModuleTables late {};
+        if (nxr::rofix::TablesAtBase(base, &late)) {
+            return nxr::rofix::FindDefinedSym(late, name);
+        }
+        return Orig(obj, name);
     }
 
 };
@@ -1687,6 +1692,8 @@ void ApplyRoFix() {
         g_RoFix = 1;
         return;
     }
+    /* Ставим всегда, когда F старая: DT_GNU_HASH может принести и модуль, подгруженный
+       позже (Shrek 2: все модули при старте с GNU, NRO — тоже). */
     nxr::rofix::TakeSnapshot(g_MemQuery, &g_RoSnapshot);
     g_RoSnapModules = g_RoSnapshot.n;
     g_RoSnapGnu = 0;
@@ -1694,10 +1701,6 @@ void ApplyRoFix() {
         if (g_RoSnapshot.mods[i].hasGnuHash) {
             ++g_RoSnapGnu;
         }
-    }
-    if (!g_RoSnapshot.anyGnuHash) {
-        g_RoFix = 1;
-        return;
     }
     RoLookupHook::InstallAtPtr(static_cast<uintptr_t>(f));
     g_RoFix = 2;

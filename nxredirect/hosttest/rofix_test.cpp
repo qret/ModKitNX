@@ -215,7 +215,24 @@ int main() {
         Check(foo != nullptr && foo->st_value == 0x30, "только LOCAL — первый LOCAL (как оригинал)");
     }
 
-    const int kMinChecks = 23;
+    std::printf("[5] модуль не из снимка (NRO, подгружен позже): разбор по базе без ядра\n");
+    {
+        Build(buf, false, true);
+        Snapshot snap {};   /* снимок пуст: модуль «подгружен позже» */
+        ModuleTables late {};
+        Check(snap.Find(base) == nullptr && TablesAtBase(base, &late) && late.hasGnuHash && !late.hasHash,
+              "не в снимке — таблицы разобраны по базе, DT_GNU_HASH");
+        const nxr::Sym* foo = FindDefinedSym(late, "foo");
+        Check(foo != nullptr && foo->st_value == 0x40, "«foo» найден у позднего модуля, отсевы те же");
+        std::memcpy(buf + kMod0, "MODX", 4);
+        Check(!TablesAtBase(base, &late), "нет магии MOD0 — не разбираем (перехват уйдёт в оригинал)");
+        Build(buf, false, true);
+        reinterpret_cast<std::uint32_t*>(buf)[1] = 0x4;
+        Check(!TablesAtBase(base, &late), "смещение MOD0 < 8 — не разбираем");
+        Check(!TablesAtBase(0, &late), "база 0 — не разбираем");
+    }
+
+    const int kMinChecks = 28;
     if (g_Ran < kMinChecks) {
         std::printf("КРАСНО: проверок выполнено %d из %d\n", g_Ran, kMinChecks);
         return 2;

@@ -9,6 +9,7 @@
 
 #include "core_bridge.hpp"
 #include "harvest_view.hpp"
+#include "sdk_check_text.hpp"
 #include "platform/content.hpp"
 #include "platform/core_fs.hpp"
 #include "platform/exefs.hpp"
@@ -246,6 +247,8 @@ LogsView Model::collectLogs(const GameDetails& d) {
     const std::string journal = plat::exefsJournalFor(d.programId ? d.programId : d.row.id);
     std::vector<std::pair<std::string, std::string>> texts;
     texts.emplace_back("exefs-read.txt", journal);
+    // Проверка sdk со страницы игры, со списком «не восполнит» (раньше — только в выключенный журнал приложения).
+    texts.emplace_back("sdk-check.txt", sdkCheckText(d.fixes));
     LogsView v = bridge::collectLogs(ctxFor(d.row, false), d.row.name, passport, true, texts);
     MK_LOG("model: logs %s ok=%d files=%zu zip=%s", d.row.tid.c_str(), v.ok, v.files, v.zip.c_str());
     return v;

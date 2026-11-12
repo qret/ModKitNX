@@ -4,6 +4,9 @@
 #include <string>
 
 #include "symbol_names.hpp"
+#include "sdk_check_text.hpp"
+
+#include <vector>
 
 using mk::app::onlineServiceOf;
 using mk::app::onlineServiceOfSymbol;
@@ -61,6 +64,32 @@ int main() {
     CHECK(onlineServiceOf("nn::news::Foo") == "news", "новости");
     CHECK(onlineServiceOf("nn::friendsx::Foo").empty(), "похожее пространство — не онлайн");
     CHECK(onlineServiceOf("nn::nifm::SubmitNetworkRequest").empty(), "nifm — не онлайн");
+
+    // sdk-check.txt для логов (source/sdk_check_text.hpp) — на своих структурах с теми же полями, что FixesBlock.
+    {
+        struct T { std::string key, fallback; bool empty() const { return key.empty() && fallback.empty(); } };
+        struct Fx { std::string id, symbol, choice, why; std::vector<std::string> importers; };
+        struct Gp { std::string symbol, kind; bool weak; std::vector<std::string> importers; std::string readable, online; };
+        struct Fc { bool ok; std::string sdkVersion; bool sdkKnown, swapped; std::vector<Fx> fixes; std::vector<Gp> gaps; T error; };
+        struct Fb { bool gameOk; std::string gameVersion; bool vulkan, opengl, ownSdkOk; std::string ownSdkError; Fc current; bool currentIsSwap; };
+        Fb f {true, "", false, true, true, "", {}, true};
+        f.current.ok = true;
+        f.current.sdkVersion = "19.3.13";
+        f.current.sdkKnown = true;
+        f.current.swapped = false;
+        f.current.gaps.push_back({"_ZN2nn4nifm22GetNetworkAccessStatusEv", "MISSING", false, {"main"},
+                                  "nn::nifm::GetNetworkAccessStatus", ""});
+        const std::string t = mk::app::sdkCheckText(f);
+        CHECK(t.find("не восполнит — 1") != std::string::npos, "sdk-check: число пробелов");
+        CHECK(t.find("nn::nifm::GetNetworkAccessStatus") != std::string::npos &&
+                  t.find("_ZN2nn4nifm22GetNetworkAccessStatusEv") != std::string::npos,
+              "sdk-check: читаемое и техническое имя");
+        CHECK(t.find("зовут: main") != std::string::npos, "sdk-check: кто зовёт");
+        CHECK(t.find("библиотеки SDK игры: не прочитаны") != std::string::npos, "sdk-check: версия не прочитана — так и пишется");
+        CHECK(t.find("подменённая на карте") != std::string::npos, "sdk-check: sdk сейчас — подменённая");
+        f.current.gaps.clear();
+        CHECK(mk::app::sdkCheckText(f).find("не восполнит: нет") != std::string::npos, "sdk-check: пробелов нет");
+    }
 
     std::printf("symbol_names: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

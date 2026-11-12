@@ -21,9 +21,11 @@
  *
  * ЧТО ДЕЛАЕМ
  * ----------
- * Подменяем F своей, но только когда это нужно: F — старая (сразу после
- * пролога `ldr x?, [x0, #80]`, нет проверки флага obj+195) И хотя бы у одного
- * модуля процесса есть DT_GNU_HASH. Своя F для ЛЮБОГО модуля из снимка (ниже) —
+ * Подменяем F своей всегда, когда F старая (сразу после пролога
+ * `ldr x?, [x0, #80]`, нет проверки флага obj+195): DT_GNU_HASH может принести и
+ * модуль, подгруженный позже (NRO), а для модулей с одной DT_HASH свой поиск даёт
+ * тот же ответ (сверено на Biped 2). Своя F для ЛЮБОГО модуля из снимка (ниже), а
+ * модуль не из снимка разбирается по своей базе (TablesAtBase) —
  * перебор .dynsym с теми же отсевами, что у оригинала (неопределённые,
  * SHN_COMMON, STT_FILE), по ИМЕНИ; поля хеш-таблиц в ModuleObject не читаем.
  *
@@ -151,7 +153,8 @@ namespace nxr::rofix {
      * игры тот же вызов работает. Поэтому всё, что нужно перехвату, снимается
      * заранее (ApplyRoFix, из хука nnMain): база, .dynsym, .dynstr, число символов
      * и есть ли DT_HASH. Перехват только читает снимок; модуля нет в снимке
-     * (подгружен позже) — оригинал sdk, как без исправления.
+     * (подгружен позже) — разбор по его базе (TablesAtBase ниже), не разобрался —
+     * оригинал sdk, как без исправления.
      */
     struct ModuleTables {
         std::uint64_t base   = 0;
@@ -229,6 +232,61 @@ namespace nxr::rofix {
             }
         }
         return local;
+    }
+
+    /*
+     * МОДУЛЬ НЕ ИЗ СНИМКА (подгружен позже: NRO через nn::ro::LoadModule — Shrek 2
+     * Remastered, 12.11.2026). Его ModuleObject строит сама старая sdk, только по
+     * DT_HASH: у NRO без DT_HASH ведро — ноль, и оригинальная F падает. Разбираем
+     * таблицы прямо по базе из ModuleObject (obj+40), БЕЗ ядра (внутри перехвата
+     * оно отказывает): слово +4 — смещение MOD0, магия 'MOD0', .dynamic, DT_SYMTAB /
+     * DT_STRTAB / DT_STRSZ / DT_SYMENT. Модуль по этой базе загружен (sdk сама ищет
+     * в нём), читаем его начало и те же таблицы, что читает оригинал. Не сошлось
+     * хоть что-то — false, и вызов уходит в оригинал, как без исправления.
+     * Пределы — те же «заведомо с запасом», что у Limits (nxr_symfind.hpp).
+     */
+    inline bool TablesAtBase(std::uint64_t base, ModuleTables* out) {
+        if (base == 0 || out == nullptr) {
+            return false;
+        }
+        const Limits lim {};
+        const std::uint32_t mod0Offset =
+            reinterpret_cast<const std::uint32_t*>(static_cast<std::uintptr_t>(base))[1];
+        if (mod0Offset < 0x8 || mod0Offset >= lim.maxMod0Offset) {
+            return false;
+        }
+        const std::uint64_t mod0Addr = base + mod0Offset;
+        const auto* mod0 = reinterpret_cast<const Mod0*>(static_cast<std::uintptr_t>(mod0Addr));
+        if (mod0->m_Magic[0] != 'M' || mod0->m_Magic[1] != 'O' || mod0->m_Magic[2] != 'D' ||
+            mod0->m_Magic[3] != '0') {
+            return false;
+        }
+        const auto* dyn = reinterpret_cast<const Dyn*>(static_cast<std::uintptr_t>(
+            static_cast<std::uint64_t>(static_cast<std::int64_t>(mod0Addr) + mod0->m_DynamicStartOffset)));
+        ModuleTables t {};
+        t.base = base;
+        std::uint64_t syment = sizeof(Sym);
+        for (std::uint32_t i = 0; i < lim.maxDynEntries && dyn[i].d_tag != DT_NULL_; ++i) {
+            const std::uint64_t value = dyn[i].d_val < base ? base + dyn[i].d_val : dyn[i].d_val;
+            switch (dyn[i].d_tag) {
+                case DT_STRTAB_:   t.strtab = value;         break;
+                case DT_SYMTAB_:   t.symtab = value;         break;
+                case DT_STRSZ_:    t.strsz = dyn[i].d_val;   break;
+                case DT_SYMENT_:   syment = dyn[i].d_val;    break;
+                case DT_HASH_:     t.hasHash = true;         break;
+                case DT_GNU_HASH_: t.hasGnuHash = true;      break;
+                default: break;
+            }
+        }
+        if (t.strtab == 0 || t.symtab == 0 || t.strsz == 0 || syment != sizeof(Sym) || t.symtab >= t.strtab) {
+            return false;
+        }
+        t.count = (t.strtab - t.symtab) / sizeof(Sym);
+        if (t.count == 0 || t.count > lim.maxSymbols) {
+            return false;
+        }
+        *out = t;
+        return true;
     }
 
     /*
