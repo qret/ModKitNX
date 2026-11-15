@@ -24,7 +24,10 @@ namespace mk::ui {
 class GameActivity : public brls::Activity {
 public:
     CONTENT_FROM_XML_RES("game_activity.xml");
-    GameActivity(const mk::app::GameRow& row, std::function<void(const mk::app::GameRow&)> onRowChanged);
+    // onRowChanged(row, focus) — метки строки для списка: при открытии страницы (focus = false) и после операции
+    // (focus = true: вернуть фокус списка на эту игру).
+    using RowChanged = std::function<void(const mk::app::GameRow&, bool focus)>;
+    GameActivity(const mk::app::GameRow& row, RowChanged onRowChanged);
     ~GameActivity() override;
     void onContentAvailable() override;
 
@@ -35,8 +38,8 @@ private:
     // Деструктор вида Borealis при удалении сфокусированного вида зовёт giveFocus(nullptr), а тот ничего не делает —
     // указатель фокуса оставался бы на удалённой кнопке (та же ловушка, что вылет после выбора языка).
     void clearBody();
-    // Успешная операция: сразу к списку игр (на ту же игру), значки строки обновятся в фоне
-    // (после «Готово» не ждать перечитывания страницы игры).
+    // Успешная операция: к списку игр на ту же игру. Перечитывается только её строка (Model::refreshRow: квитанция,
+    // моды, подмена sdk — без exefs и скана sdk), список применяет её при возврате и ставит фокус на эту игру.
     void returnToList(bool removal);
     void buildHeader(brls::Box* body);
     void buildState(brls::Box* body);
@@ -74,7 +77,7 @@ private:
     ReportsInfo reports_;               // отчёты этой игры на карте (findReports, в фоне)   // содержимое блока «Что исправит модуль» (перестраивается при выборе sdk)
     brls::View* firstFocus_ = nullptr;
     brls::Box* anchor_ = nullptr;   // невидимая фокусируемая опора — всегда первый ребёнок body
-    std::function<void(const mk::app::GameRow&)> onRowChanged_;
+    RowChanged onRowChanged_;
     AliveToken alive_ = makeAlive();
 };
 

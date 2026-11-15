@@ -5,6 +5,7 @@
 #include "platform/app_config.hpp"
 #include "platform/log.hpp"
 #include "platform/paths.hpp"
+#include "ui/forwarder_ui.hpp"
 #include "ui/update_ui.hpp"
 
 namespace mk::ui {
@@ -116,6 +117,9 @@ void SettingsActivity::onContentAvailable() {
     upd->addView(onStart);
     body->addView(upd);
 
+    // Ярлык на домашнем экране (Р-43): запуск сразу в режиме тайтла, без игры с R.
+    body->addView(forwarder::makeSettingsCard());
+
     // Журнал приложения: включить/выключить, действует сразу.
     auto* logCard = makeCard();
     logCard->addView(makeSectionTitle(tr("settings/log_title")));
@@ -132,6 +136,23 @@ void SettingsActivity::onContentAvailable() {
     });
     logCard->addView(logRow);
     body->addView(logCard);
+
+    // Кэш показа (sdmc:/switch/<APP>/cache/): только ускорение списков; установка и удаление читают игру сами.
+    auto* cacheCard = makeCard();
+    cacheCard->setId("cache_card");
+    cacheCard->addView(makeSectionTitle(tr("settings/cache_title")));
+    cacheCard->addView(makeLabel(tr("settings/cache_note"), 16, colSub()));
+    auto* resetBtn = makeButton(tr("settings/cache_btn"), &brls::BUTTONSTYLE_BORDERED, [] {
+        brls::Application::notify(tr("settings/cache_busy"));
+        brls::async([] {
+            const size_t n = mk::app::Model::instance().resetCache();
+            brls::sync([n] { brls::Application::notify(trf("settings/cache_done", std::to_string(n))); });
+        });
+    });
+    resetBtn->setId("cache_reset_btn");
+    resetBtn->setMarginTop(12);
+    cacheCard->addView(resetBtn);
+    body->addView(cacheCard);
 
     // О программе
     auto* about = makeCard();
@@ -193,6 +214,7 @@ void SettingsActivity::onContentAvailable() {
     dirs->addView(makeInfoLine(tr("folders/mods"), mk::plat::paths::kModsDir + "<TID>/", colText()));
     dirs->addView(makeInfoLine(tr("folders/sdk"), mk::plat::paths::kSdkDirOwn, colText()));
     dirs->addView(makeInfoLine(tr("folders/sdk_dbi"), mk::plat::paths::kSdkDirDbi, colText()));
+    dirs->addView(makeInfoLine(tr("folders/cache"), mk::plat::paths::kCacheDir, colText()));
     {
         const std::string lp = mk::plat::log::currentPath();
         dirs->addView(makeInfoLine(tr("folders/log"), lp.empty() ? tr("settings/log_off_short") : lp, colText()));

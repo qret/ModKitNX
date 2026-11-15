@@ -14,19 +14,9 @@ namespace mk::plat {
 
 namespace {
 
-// Признак содержимого игры: content id program NCA (меняется с каждым обновлением и переустановкой) + номер
-// версии записи ncm. Совпал с кэшем — sdk игры та же, exefs не открываем.
-std::string contentKey(const ProgramNca& nca) {
-    char buf[64];
-    std::string id;
-    for (int i = 0; i < 0x10; ++i) {
-        std::snprintf(buf, sizeof(buf), "%02x", nca.contentId.c[i]);
-        id += buf;
-    }
-    std::snprintf(buf, sizeof(buf), ":%s:%u", nca.fromPatch ? "patch" : "base",
-                  nca.fromPatch ? nca.patchVersion : nca.baseVersion);
-    return id + buf;
-}
+// Признак содержимого игры — contentKeyOf (platform/content.hpp, общий с кэшем списка и проверки игры).
+// Совпал с кэшем — sdk игры та же, exefs не открываем.
+std::string contentKey(const ProgramNca& nca) { return contentKeyOf(nca); }
 
 // Открыть exefs игры (как source/app_model.cpp loadDetails): program NCA → заголовок (program id) → Code FS.
 bool openGame(uint64_t appId, const ProgramNca& nca, ExefsMount& mount) {

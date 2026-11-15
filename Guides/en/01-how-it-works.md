@@ -34,6 +34,15 @@ freeze or crash. With ModKitNX they work, on any Atmosphère and any CFW build.
 - English, Russian and Ukrainian; a light or dark theme that follows the console; updates itself from GitHub releases.
 - Open source, GPL-3.0-or-later.
 
+### Shortcut on the HOME screen
+
+ModKitNX needs full memory, so it is normally launched through a game while holding R. A shortcut on the HOME screen
+does that for you: **Settings → Shortcut on the HOME screen → Create a shortcut on the HOME screen** (the app also
+offers it once on first start). The ModKitNX icon appears on the HOME screen and opens the app straight away. The
+shortcut is installed on the SD card and starts `sdmc:/switch/ModKitNX/ModKitNX.nro`, so app updates need nothing
+extra. Shortcuts are not shown in the app's list of games. To remove it: **Remove the shortcut** in the same
+place, or System Settings → Data Management.
+
 Built on the work of **Луня (Lunya) — [Langegen](https://github.com/Langegen)**, author of
 [TorrentShopNX](https://github.com/Langegen/TorrentShopNX) — see [Thanks](#thanks).
 

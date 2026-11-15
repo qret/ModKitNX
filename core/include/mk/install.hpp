@@ -83,6 +83,12 @@ InstalledState inspect_installed(Env& env, const std::string& dest, const std::s
 // nullopt — сравнивать нечего. stale — имена разошедшихся файлов. Читаются только заголовки.
 std::optional<bool> installed_matches_game(Env& env, const std::string& dest, const std::string& tid,
                                            const std::string& game_exefs, std::vector<std::string>* stale = nullptr);
+// То же по ModuleId файлов exefs игры (имя -> hex), снятым раньше (кэш проверки игры: exefs не открывается).
+std::optional<bool> installed_matches_game(Env& env, const std::string& dest, const std::string& tid,
+                                           const std::map<std::string, std::string>& game_module_ids,
+                                           std::vector<std::string>* stale = nullptr);
+// ModuleId каждого NSO в корне exefs игры (имя -> hex; читаются только заголовки) — для перегрузки выше.
+std::map<std::string, std::string> exefs_module_ids(Env& env, const std::string& game_exefs);
 
 // Снятие по квитанции (настоящее удаление):
 //  - удаляется только то, что названо в квитанции И чей sha256 совпал с записанным

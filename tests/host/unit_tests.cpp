@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "fixture_deflate.h"
 #include "host_fs.hpp"
+#include "mk/cache.hpp"
 #include "mk/install.hpp"
 #include "mk/logs.hpp"
 #include "mk/nacp.hpp"
@@ -1204,6 +1205,270 @@ static void test_ro_lookup() {
     CHECK(forecast_ro_fix(g, sx).verdict.empty(), "nn::ro: не считалось (подставные списки) -> строки нет");
 }
 
+// ------------------------------------------------------------ кэш показа (mk::cache)
+// Прогноз в сравнимом виде: строки forecast_fixes, пробелы sdk_gaps и вердикт nn::ro — одной строкой.
+static std::string forecast_text(const ForecastGame& g, const ForecastSdk& s) {
+    std::string t;
+    for (const auto& f : forecast_fixes(g, s).fixes) {
+        t += f.fix.id + ":" + f.choice + "/" + f.why + (f.sdk_has ? "+h" : "") + (f.sdk_stub ? "+s" : "");
+        for (const auto& m : f.importers) t += "," + m;
+        t += ";";
+    }
+    if (g.own_sdk_ok)
+        for (const auto& gp : sdk_gaps(g.all_imports, g.module_exports, s.exports, g.own_sdk)) {
+            t += "|" + gp.symbol + ":" + gp.kind + (gp.weak ? "w" : "") + (gp.fix ? "F" : "");
+            for (const auto& m : gp.importers) t += "," + m;
+        }
+    const RoFixForecast ro = forecast_ro_fix(g, s);
+    t += "#ro=" + ro.verdict + std::to_string(ro.modules);
+    return t;
+}
+
+static void test_cache() {
+    namespace C = mk::cache;
+    using V = std::array<int, 3>;
+    char tmpl[] = "/tmp/mk-unit-cache-XXXXXX";
+    std::string root = mkdtemp(tmpl);   // временное — остаётся
+    mkhost::StdFs sfs;
+    mkhost::Clock clk;
+    Env env{sfs, soft_hash(), clk};
+    auto put = [&](const std::string& p, const Bytes& b) {
+        sfs.make_dirs(path_parent(p));
+        sfs.write_file_replace(p, b.data(), b.size());
+    };
+    const std::string app = C::app_key("1.1.1");
+    const std::string fp = C::forecast_fingerprint();
+    CHECK(fp.size() == 16 && fp == C::forecast_fingerprint() && app == "1.1.1/" + fp,
+          "кэш: отпечаток каталога — 16 hex, повторяем; app = версия/отпечаток");
+
+    // ---- отпечаток файла
+    C::FileStamp a{100, 5, std::string(64, 'a')}, b = a;
+    CHECK(C::same_stamp(a, b), "отпечаток: те же размер, mtime, начало — совпал");
+    b.size = 101;
+    CHECK(!C::same_stamp(a, b), "отпечаток: другой размер — промах");
+    b = a;
+    b.mtime = 6;
+    CHECK(!C::same_stamp(a, b), "отпечаток: другой mtime — промах");
+    b = a;
+    b.head = std::string(64, 'b');
+    CHECK(!C::same_stamp(a, b), "отпечаток: другое начало файла (тот же размер и mtime) — промах");
+    b = a;
+    b.mtime.reset();
+    CHECK(!C::same_stamp(a, b), "отпечаток: mtime есть только с одной стороны — промах (тело могли пропатчить)");
+    a.mtime.reset();
+    CHECK(C::same_stamp(a, b), "отпечаток: mtime нет с обеих сторон — решают размер и начало");
+
+    // ---- sdk-files.json: тот же результат из кэша и живьём, ключ изменился -> промах
+    const std::string own = root + "/sd/sdk", dbi = root + "/sd/dbi";
+    const Bytes s19 = make_sdk_nso("nnSdk", "19_3_13", 1), s22 = make_sdk_nso("nnSdk", "22_2_0", 2),
+                gl = make_sdk_nso("opengl", "22_2_0", 3);
+    put(own + "/a/sdk", s19);
+    put(own + "/sdk-22", s22);
+    put(dbi + "/x.nso", s19);   // повтор той же sdk
+    put(dbi + "/gl", gl);
+    put(dbi + "/readme.txt", Bytes{'h', 'i'});
+    const std::vector<SdkRoot> roots = {{own, "modkit"}, {dbi, "dbi"}};
+    auto view = [](const std::vector<SdkEntry>& v) {
+        std::string t;
+        for (const auto& e : v) {
+            t += e.file.path + "=" + e.file.sha256 + "@" + (e.file.version ? version_text(*e.file.version) : "") + ":";
+            for (const auto& s : e.sources) t += s.first + ">" + s.second + ",";
+            t += e.same_version_other_id ? "!" : ".";
+        }
+        return t;
+    };
+    const std::string live = view(scan_sdk(env, roots));
+    C::SdkFilesCache sc;
+    C::ScanStats st;
+    const std::string first = view(C::scan_sdk_cached(env, roots, sc, nullptr, &st));
+    CHECK(first == live && st.hits == 0 && st.misses == 5 && st.changed && sc.files.size() == 4,
+          "sdk-files: первый проход — всё живьём, тот же результат, что scan_sdk; в кэше 4 NSO (не NSO — нет)");
+    const std::string sfp = root + "/sd/cache/sdk-files.json";
+    C::write_cache_file(env, sfp, C::dump_sdk_files(sc, app));
+    const bool twice = !throws([&] { C::write_cache_file(env, sfp, C::dump_sdk_files(sc, app)); });
+    CHECK(twice, "кэш: вторая запись того же файла на строгой хост-ФС — без FS_EXISTS (write_file_replace)");
+    C::SdkFilesCache sc2 = C::parse_sdk_files(C::read_cache_file(env, sfp), app);
+    const std::string second = view(C::scan_sdk_cached(env, roots, sc2, nullptr, &st));
+    CHECK(second == live && st.hits == 4 && st.misses == 1 && !st.changed,
+          "sdk-files: из кэша — тот же результат, файлы sdk не перечитываются (4 попадания)");
+    put(own + "/a/sdk", make_sdk_nso("nnSdk", "19_3_13", 9));   // тот же размер, другая сборка
+    const std::string third = view(C::scan_sdk_cached(env, roots, sc2, nullptr, &st));
+    CHECK(third == view(scan_sdk(env, roots)) && third != live && st.misses == 2 && st.changed,
+          "sdk-files: файл заменён другим того же размера — промах по началу файла, новый sha256");
+    sc2.files[own + "/gone"] = sc2.files.begin()->second;
+    (void)C::scan_sdk_cached(env, roots, sc2, nullptr, &st);
+    CHECK(st.changed && !sc2.files.count(own + "/gone"), "sdk-files: исчезнувший файл выбрасывается из кэша");
+    CHECK(C::parse_sdk_files(C::dump_sdk_files(sc, app), "1.1.2/" + fp).files.empty(),
+          "sdk-files: другая версия приложения — пустой кэш");
+    {
+        Bytes bad = C::dump_sdk_files(sc, app);
+        bad.resize(bad.size() / 2);
+        bool empty = false;
+        const bool quiet = !throws([&] { empty = C::parse_sdk_files(bad, app).files.empty(); });
+        CHECK(quiet && empty, "sdk-files: обрезанный файл — пустой кэш без исключения");
+        auto pj = [&](const std::string& t) { return C::parse_sdk_files(Bytes(t.begin(), t.end()), app); };
+        CHECK(pj("{\"schema\":2,\"app\":\"" + app + "\",\"files\":{}}").files.empty() && pj("[1,2]").files.empty() &&
+                  pj("{\"schema\":1,\"app\":\"" + app + "\",\"files\":{\"p\":{\"stamp\":{\"size\":\"1\",\"mtime\":null,"
+                     "\"head\":\"x\"},\"sdk\":null}}}").files.empty(),
+              "sdk-files: чужая схема, не объект, неверные типы полей — промах");
+    }
+    CHECK(C::read_cache_file(env, root + "/нет.json").empty(), "кэш: файла нет — пусто, не исключение");
+
+    // ---- games.json
+    C::GamesCache gc;
+    C::GameEntry ge;
+    ge.key = "00ff:patch:196608";
+    ge.name = "Well Dweller";
+    ge.version = "1.0.3";
+    ge.game_sdk = "22.5.0";
+    ge.icon = true;
+    C::SwapInfo sw;
+    sw.stamp = C::FileStamp{6123456, std::nullopt, std::string(64, 'c')};
+    sw.nnsdk = true;
+    sw.version = "19.3.13";
+    sw.sha256 = std::string(64, 'd');
+    ge.swap = sw;
+    gc.games["0100A6B01F2D4000"] = ge;
+    C::GameEntry plain = ge;
+    plain.swap.reset();
+    plain.icon = false;
+    plain.name = "Ёлка \xff";   // неверный UTF-8 в названии — запись не падает
+    gc.games["0100000000000001"] = plain;
+    C::GamesCache gc2;
+    const bool nothrow = !throws([&] { gc2 = C::parse_games(C::dump_games(gc, app), app); });
+    const auto& w = gc2.games["0100A6B01F2D4000"];
+    CHECK(nothrow && gc2.games.size() == 2 && w.key == ge.key && w.name == ge.name && w.game_sdk == "22.5.0" && w.icon &&
+              w.swap && w.swap->version == "19.3.13" && w.swap->nnsdk && !w.swap->stamp.mtime &&
+              w.swap->stamp.size == 6123456 && !gc2.games["0100000000000001"].swap,
+          "games: туда и обратно (подмена по отпечатку, mtime нет; неверный UTF-8 имени — без исключения)");
+    CHECK(C::parse_games(C::dump_games(gc, app), "0.0.0/x").games.empty(), "games: чужой app — пустой кэш");
+    {
+        const std::string t = "{\"schema\":1,\"app\":\"" + app + "\",\"games\":{\"0100A6B01F2D4000\":{\"key\":\"k\","
+                              "\"name\":1,\"version\":\"1\",\"game_sdk\":\"\",\"icon\":false,\"swap\":null},"
+                              "\"zz\":{},\"0100000000000002\":{\"key\":\"k2\",\"name\":\"n\",\"version\":\"1\","
+                              "\"game_sdk\":\"\",\"icon\":false,\"swap\":null}}}";
+        const auto g3 = C::parse_games(Bytes(t.begin(), t.end()), app);
+        CHECK(g3.games.size() == 1 && g3.games.count("0100000000000002"),
+              "games: запись с неверным типом поля и с не-TID — выброшены (промах), остальные целы");
+    }
+
+    // ---- проверка игры: одинаковый прогноз из кэша и живьём
+    ForecastGame g;
+    g.version = V{22, 5, 0};
+    g.modules = {"main", "subsdk0"};
+    g.gnu_hash_modules = {"main"};
+    const auto& cat = autofix_catalog();
+    const std::string fixSym = cat.empty() ? "nn_fix" : cat.front().symbol;
+    g.imports[fixSym] = {"main"};
+    g.all_imports[fixSym] = GameImport{false, {"main"}};
+    g.all_imports["sdk_a"] = GameImport{false, {"main", "subsdk0"}};   // в sdk нет — MISSING
+    g.all_imports["sdk_b"] = GameImport{true, {"subsdk0"}};            // заглушка в старой — STUB
+    g.all_imports["sdk_c"] = GameImport{false, {"main"}};              // есть и там, и там
+    g.all_imports["game_own"] = GameImport{false, {"main"}};           // закрыт модулем игры
+    g.all_imports["libc_x"] = GameImport{false, {"main"}};             // своей sdk нет — не sdk
+    g.module_exports = {"game_own"};
+    g.own_sdk_ok = true;
+    g.own_sdk = {{"sdk_a", false}, {"sdk_b", false}, {"sdk_c", false}, {"game_own", false}, {fixSym, false}};
+    ForecastSdk s;
+    s.name = std::string("nnSdk");
+    s.known = true;
+    s.version = V{19, 3, 13};
+    s.ro_lookup = "sysv_only";
+    s.exports = {{"sdk_b", true}, {"sdk_c", false}, {"unrelated_1", false}, {"unrelated_2", true}};
+    for (size_t i = 1; i < cat.size(); ++i) s.exports[cat[i].symbol] = (i % 2) == 0;
+    const std::string liveF = forecast_text(g, s);
+    const ForecastGame cg = C::compact_game(g);
+    const ForecastSdk rs = C::restrict_sdk(s, cg);
+    CHECK(forecast_text(cg, rs) == liveF && liveF.find("sdk_a:MISSING") != std::string::npos &&
+              liveF.find("sdk_b:STUBw") != std::string::npos && liveF.find("game_own") == std::string::npos,
+          "кэш игры: урезанные игра и sdk дают тот же прогноз (пробелы MISSING/STUB, каталог, nn::ro)");
+    CHECK(!cg.all_imports.count("libc_x") && !cg.all_imports.count("game_own") && cg.module_exports.empty() &&
+              !rs.exports.count("unrelated_1"),
+          "кэш игры: лишние импорты и экспорты sdk не хранятся");
+    C::GameCheck ck;
+    ck.key = "00ff:base:0";
+    ck.fw = "19.0.1";
+    ck.ams = "1.9.5";
+    ck.exefs = nlohmann::json{{"via", "raw-nca-keys"}};
+    ck.zbic = true;
+    ck.zbic_files = {"main"};
+    ck.module_ids = {{"main", std::string(64, '1')}};
+    ck.game = cg;
+    ck.own_side = rs;
+    ck.by_sdk[std::string(64, 'e')] = rs;
+    const Bytes ckb = C::dump_game_check(ck, app);
+    const auto back = C::parse_game_check(ckb, app, ck.key, ck.fw, ck.ams);
+    CHECK(back && back->zbic && back->zbic_files == ck.zbic_files && back->module_ids == ck.module_ids &&
+              back->exefs["via"] == "raw-nca-keys" && back->own_side && back->by_sdk.size() == 1 &&
+              forecast_text(back->game, back->by_sdk.begin()->second) == liveF &&
+              forecast_text(back->game, *back->own_side) == liveF,
+          "кэш игры: туда и обратно через JSON — тот же прогноз, что живьём");
+    CHECK(!C::parse_game_check(ckb, app, "00ff:patch:65536", ck.fw, ck.ams), "кэш игры: обновление игры (другой ключ) — промах");
+    CHECK(!C::parse_game_check(ckb, app, ck.key, "20.1.0", ck.ams) && !C::parse_game_check(ckb, app, ck.key, ck.fw, "1.10.0"),
+          "кэш игры: другая прошивка или Atmosphère — промах");
+    CHECK(!C::parse_game_check(ckb, "1.1.1/0000000000000000", ck.key, ck.fw, ck.ams) &&
+              !C::parse_game_check(ckb, app, "", ck.fw, ck.ams),
+          "кэш игры: другой каталог автоисправлений / пустой ключ — промах");
+    {
+        Bytes bad = ckb;
+        bad.resize(bad.size() - 40);
+        CHECK(!C::parse_game_check(bad, app, ck.key, ck.fw, ck.ams), "кэш игры: обрезанный файл — промах без исключения");
+        std::string t(ckb.begin(), ckb.end());
+        const size_t at = t.find("\"zbic\": true");
+        if (at != std::string::npos) t.replace(at, 12, "\"zbic\": \"1\"");
+        CHECK(at != std::string::npos && !C::parse_game_check(Bytes(t.begin(), t.end()), app, ck.key, ck.fw, ck.ams),
+              "кэш игры: неверный тип поля — промах");
+    }
+    ForecastGame noOwn = g;
+    noOwn.own_sdk_ok = false;
+    noOwn.own_sdk_error = "SDK_ABSENT";
+    CHECK(forecast_text(C::compact_game(noOwn), C::restrict_sdk(s, C::compact_game(noOwn))) == forecast_text(noOwn, s),
+          "кэш игры: своей sdk нет — прогноз каталога тот же, пробелы не считаются");
+
+    // своя sdk игры читается один раз: сторона из forecast_game == forecast_sdk того же файла
+    put(root + "/ex/main", make_sdk_nso("main", "22_5_0", 4));
+    put(root + "/ex/sdk", s19);
+    ForecastSdk ownSide;
+    const ForecastGame fg = forecast_game(env, root + "/ex", &ownSide);
+    const ForecastSdk direct = forecast_sdk(env, root + "/ex/sdk");
+    CHECK(fg.own_sdk_ok && ownSide.known && ownSide.version == direct.version && ownSide.exports == direct.exports &&
+              ownSide.ro_lookup == direct.ro_lookup,
+          "forecast_game: сторона своей sdk из того же чтения == forecast_sdk(exefs/sdk)");
+
+    // ZBIC снят нами: сравнение по ModuleId из кэша == по папке exefs игры
+    const std::string dest = root + "/dest", tid = "0100A6B01F2D4000";
+    const std::string rj = "{\"zbic_files\":[\"main\"]}";
+    put(title_dir_of(dest, tid) + "/nxredirect.json", Bytes(rj.begin(), rj.end()));
+    put(title_dir_of(dest, tid) + "/exefs/main", make_sdk_nso("main", "22_5_0", 4));
+    const auto ids = exefs_module_ids(env, root + "/ex");
+    const auto byDir = installed_matches_game(env, dest, tid, root + "/ex");
+    const auto byIds = installed_matches_game(env, dest, tid, ids);
+    CHECK(ids.size() == 2 && byDir && *byDir && byIds && *byIds, "ZBIC снят нами: по ModuleId из кэша == по папке (совпало)");
+    put(root + "/ex/main", make_sdk_nso("main", "22_5_0", 5));   // игра обновилась
+    const auto ids2 = exefs_module_ids(env, root + "/ex");
+    const auto byDir2 = installed_matches_game(env, dest, tid, root + "/ex");
+    const auto byIds2 = installed_matches_game(env, dest, tid, ids2);
+    CHECK(byDir2 && !*byDir2 && byIds2 && !*byIds2, "ZBIC снят нами: игра обновилась — устарело и по кэшу, и по папке");
+
+    // ---- уборка кэша: только свои имена
+    const std::string cd = root + "/sd/cache";
+    put(cd + "/icons/0100A6B01F2D4000.jpg", Bytes{1});
+    put(cd + "/icons/0100000000000009.jpg", Bytes{1});
+    put(cd + "/icons/notes.txt", Bytes{1});
+    put(cd + "/game/0100000000000009.json", Bytes{1});
+    put(cd + "/games.json", Bytes{1});
+    put(cd + "/mine.txt", Bytes{1});
+    const std::set<std::string> keep = {"0100A6B01F2D4000"};
+    const size_t n1 = C::remove_cache_files(env, cd, &keep, false);
+    CHECK(n1 == 2 && sfs.is_file(cd + "/icons/0100A6B01F2D4000.jpg") && !sfs.is_file(cd + "/icons/0100000000000009.jpg") &&
+              !sfs.is_file(cd + "/game/0100000000000009.json") && sfs.is_file(cd + "/games.json"),
+          "уборка: файлы удалённых игр убраны, нужные и games.json остались");
+    const size_t n2 = C::remove_cache_files(env, cd, nullptr, true);
+    CHECK(n2 == 3 && !sfs.is_file(cd + "/games.json") && !sfs.is_file(cd + "/sdk-files.json") &&
+              sfs.is_file(cd + "/icons/notes.txt") && sfs.is_file(cd + "/mine.txt"),
+          "«Сбросить кэш»: убраны только файлы кэша, чужие файлы в папке не тронуты");
+}
+
 int main() {
     test_ro_lookup();
     test_sha();
@@ -1221,6 +1486,7 @@ int main() {
     test_own_no_bak();
     test_logs();
     test_harvest();
+    test_cache();
     std::printf("unit: прошло %d, провалено %d\n", g_pass, g_fail);
     if (g_pass + g_fail < 80) {
         std::printf("ЗАТВОР НУЛЯ: проверок меньше 80\n");

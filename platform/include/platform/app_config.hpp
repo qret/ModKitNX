@@ -17,6 +17,9 @@ inline const char* const kTheme = "theme";              // "system" | "light" | 
 inline const char* const kUpdateCheck = "update_check"; // проверять обновление при запуске; нет — true
 inline const char* const kAppLog = "app_log";            // вести журнал приложения (logs/<APP>-*.log); нет — false (по умолчанию выключен)
 inline const char* const kUpdateSkip = "update_skip";   // версия, которую пользователь пропустил ("0.2.0")
+// Вопрос «Создать ярлык на домашнем экране?» (Р-43): "created" | "declined" | "exists" (ярлык уже был — не
+// спрашивали); нет ключа — ещё не спрашивали (первый запуск после выбора языка или первый запуск новой версии).
+inline const char* const kForwarderPrompt = "forwarder_prompt";
 
 std::string getString(const std::string& key, const std::string& def = "");
 bool getBool(const std::string& key, bool def);

@@ -2,13 +2,16 @@
 // ModKitNX — найденные sdk через ядро (mk::scan_sdk). См. platform/sdk_scan.hpp.
 #include "platform/sdk_scan.hpp"
 
+#include <mk/cache.hpp>
 #include <mk/nso.hpp>
 #include <mk/sdk.hpp>
 #include <mk/sdk_harvest.hpp>
 
 #include "platform/core_fs.hpp"
+#include "platform/file_time.hpp"
 #include "platform/log.hpp"
 #include "platform/paths.hpp"
+#include "platform/timing.hpp"
 
 namespace mk::plat {
 
@@ -17,8 +20,10 @@ constexpr const char* kLabelOwn = "modkit";
 constexpr const char* kLabelDbi = "dbi";
 
 // Журнал поиска sdk (бывало: файл DBI лежал в папке, а приложение писало «sdk не найдены» без
-// причин). Для каждого файла в папках sdk — размер и почему он принят или отвергнут; исключение ядра — текстом.
-void logSdkCandidates(mk::IFileSystem& fs, mk::Env& env, const std::string& dir, int depth) {
+// причин). Для каждого файла в папках sdk — размер и NSO ли он; что принято и что отвергнуто — после обхода, по
+// результатам ядра. Только при включённом журнале и только заголовок файла: раньше здесь каждый файл читался
+// целиком и распаковывался ради строки журнала даже при выключенном журнале (вдвое больше чтения на запуске).
+void logSdkCandidates(mk::IFileSystem& fs, const std::string& dir, int depth) {
     std::vector<mk::DirEntry> list;
     try {
         list = fs.list_dir(dir);
@@ -31,23 +36,15 @@ void logSdkCandidates(mk::IFileSystem& fs, mk::Env& env, const std::string& dir,
         const std::string p = mk::path_join(dir, e.name);
         if (e.is_dir) {
             MK_LOG("sdk-scan:   [dir] %s", p.c_str());
-            if (depth < 2) logSdkCandidates(fs, env, p, depth + 1);
+            if (depth < 2) logSdkCandidates(fs, p, depth + 1);
             continue;
         }
         try {
             const uint64_t size = fs.file_size(p);
             mk::Bytes head = fs.read_range(p, 0, mk::kNsoHeaderSize);
             mk::NsoHeader h;
-            if (!mk::parse_nso_header(head.data(), head.size(), h)) {
-                MK_LOG("sdk-scan:   %s size=%llu — not NSO0", p.c_str(), (unsigned long long)size);
-                continue;
-            }
-            mk::Bytes raw = fs.read_file(p);
-            mk::NsoImage n(raw, &env.hash);
-            const auto name = n.module_name();
-            const auto ver = n.mw_version();
-            MK_LOG("sdk-scan:   %s size=%llu module=%s version=%s", p.c_str(), (unsigned long long)size,
-                   name ? name->c_str() : "(none)", ver ? mk::version_text(*ver).c_str() : "(none)");
+            MK_LOG("sdk-scan:   %s size=%llu%s", p.c_str(), (unsigned long long)size,
+                   mk::parse_nso_header(head.data(), head.size(), h) ? "" : " — not NSO0");
         } catch (const std::exception& ex) {
             MK_LOG("sdk-scan:   %s — error: %s", p.c_str(), ex.what());
         }
@@ -60,7 +57,8 @@ std::string baseName(const std::string& p) {
 }
 }  // namespace
 
-std::vector<FoundSdk> scanSdk(SdkScanStats& stats) {
+std::vector<FoundSdk> scanSdk(SdkScanStats& stats, bool useCache) {
+    const uint64_t t0 = nowMs();
     stats = SdkScanStats{};
     std::vector<FoundSdk> out;
     PosixFs& fs = posixFs();
@@ -74,15 +72,32 @@ std::vector<FoundSdk> scanSdk(SdkScanStats& stats) {
     if (roots.empty()) return out;
 
     mk::Env env{fs, nxHash(), nxClock()};
-    for (const auto& r : roots) logSdkCandidates(fs, env, r.dir, 0);
+    if (log::enabled())
+        for (const auto& r : roots) logSdkCandidates(fs, r.dir, 0);
+    // Кэш отпечатков (sdk-files.json): тот же файл (размер, mtime, начало) — без чтения целиком. Y «Обновить» —
+    // мимо кэша (useCache = false): всё живьём, кэш перезаписывается.
+    const std::string app = mk::cache::app_key(MK_APP_VERSION);
+    mk::cache::SdkFilesCache cache;
+    if (useCache) cache = mk::cache::parse_sdk_files(mk::cache::read_cache_file(env, paths::kSdkFilesCache), app);
+    mk::cache::ScanStats cs;
+    std::vector<mk::SdkFile> rejected;
     std::vector<mk::SdkEntry> entries;
     try {
-        entries = mk::scan_sdk(env, roots);
+        entries = mk::cache::scan_sdk_cached(env, roots, cache, fileMtime, &cs, 2, &rejected);
     } catch (const mk::Error& e) {
         stats.error = e.what();
         MK_LOG("sdk: scan failed %s: %s", e.code().c_str(), e.what());
         return out;
     }
+    if (cs.changed || !useCache) {
+        try {
+            mk::cache::write_cache_file(env, paths::kSdkFilesCache, mk::cache::dump_sdk_files(cache, app));
+        } catch (const std::exception& e) {
+            MK_LOG("sdk: cache not saved: %s", e.what());   // кэш — только ускорение; без него всё работает
+        }
+    }
+    for (const auto& r : rejected)
+        MK_LOG("sdk-scan:   %s module=%s — not nnSdk", r.path.c_str(), r.module_name.c_str());
     for (const auto& e : entries) {
         FoundSdk f;
         f.path = e.file.path;
@@ -101,6 +116,7 @@ std::vector<FoundSdk> scanSdk(SdkScanStats& stats) {
         }
         if (f.allPaths.empty()) f.allPaths.push_back(f.path);
         f.sameVersionOtherBuild = e.same_version_other_id;
+        MK_LOG("sdk-scan:   %s nnSdk %s", f.path.c_str(), f.versionText.c_str());
         // Подпись «из игры …» — только если source.json рядом называет ровно этот файл (sha256).
         if (const auto src = mk::harvest::read_source(env, e.file.path, e.file.sha256)) {
             f.fromGame = src->game;
@@ -111,7 +127,8 @@ std::vector<FoundSdk> scanSdk(SdkScanStats& stats) {
         }
         out.push_back(std::move(f));
     }
-    MK_LOG("sdk: %zu unique nnSdk (own dir %d, dbi dir %d)", out.size(), stats.ownDirExists, stats.dbiDirExists);
+    MK_LOG("sdk: %zu unique nnSdk (own dir %d, dbi dir %d); cache %s: %zu hit, %zu read; %llu ms", out.size(),
+           stats.ownDirExists, stats.dbiDirExists, useCache ? "on" : "bypass", cs.hits, cs.misses, msSince(t0));
     return out;
 }
 

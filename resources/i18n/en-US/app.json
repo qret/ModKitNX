@@ -294,7 +294,40 @@
         "log_sub": "Files in sdmc:/switch/ModKitNX/logs/ — needed to find out what went wrong. The last {0} are kept.",
         "log_on": "Log turned on.",
         "log_off": "Log turned off.",
-        "log_off_short": "log is off"
+        "log_off_short": "log is off",
+        "cache_title": "Cache",
+        "cache_note": "To start faster, the app remembers what it already read about games and sdk files (sdmc:/switch/ModKitNX/cache/). It is used only to show the lists: installing and removing always read the game itself. Updated or reinstalled games, new sdk files and changes in atmosphere/contents are noticed on their own.",
+        "cache_btn": "Clear cache",
+        "cache_done": "Cache cleared ({0} files). Everything is read again next time — press Y in the game list to do it now.",
+        "cache_busy": "Clearing the cache…"
+    },
+    "forwarder": {
+        "title": "Shortcut on the HOME screen",
+        "note": "A ModKitNX icon on the HOME screen: it opens the app straight away with full memory — no need to hold R while launching a game. The shortcut is installed on the SD card and starts sdmc:/switch/ModKitNX/ModKitNX.nro.",
+        "state_yes": "The shortcut is on the HOME screen.",
+        "state_no": "There is no shortcut yet.",
+        "state_running": "The app was started from this shortcut.",
+        "create_btn": "Create a shortcut on the HOME screen",
+        "remove_btn": "Remove the shortcut",
+        "create_short": "Create",
+        "remove_short": "Remove",
+        "confirm_create": "Create a ModKitNX shortcut on the HOME screen? It is installed on the SD card like an application.",
+        "confirm_remove": "Remove the ModKitNX shortcut from the HOME screen? The app itself and its settings stay.",
+        "offer": "Create a ModKitNX shortcut on the HOME screen? It opens the app straight away with full memory — no need to hold R while launching a game. You can remove it in Settings at any time.",
+        "offer_later": "Not now",
+        "creating": "Creating the shortcut…",
+        "created": "The shortcut is created: ModKitNX is now on the HOME screen.",
+        "removed": "The shortcut is removed.",
+        "err_running": "The app was started from this shortcut, so the shortcut cannot be changed from here. Launch ModKitNX through a game (hold R), or remove the shortcut in System Settings → Data Management.",
+        "err_no_nro": "File {0} was not found — the shortcut starts exactly this file. Put ModKitNX.nro there and try again.",
+        "err_no_loader": "This ModKitNX build does not contain the shortcut loader. Download ModKitNX from the releases page. (code {0})",
+        "err_key": "The console did not provide the key needed for the shortcut (code {0}).",
+        "err_build": "The shortcut could not be built (code {0}). Details are in the app log.",
+        "err_write": "The shortcut could not be written to the SD card (code {0}). Check the free space on the card.",
+        "err_database": "The console did not accept the shortcut (code {0}). Nothing was left behind.",
+        "err_record": "The console did not add the shortcut to the HOME screen (code {0}). Nothing was left behind.",
+        "err_remove": "The shortcut could not be removed (code {0}). You can remove it in System Settings → Data Management.",
+        "err_unknown": "Something went wrong (code {0}). Details are in the app log."
     },
     "console": {
         "title": "Console",
@@ -319,7 +352,8 @@
         "mods": "Mods",
         "sdk": "sdk",
         "sdk_dbi": "sdk (fallback, DBI)",
-        "log": "Log"
+        "log": "Log",
+        "cache": "Cache"
     },
     "about": {
         "what": "Modifies a game built for a newer firmware so that it runs on yours: removes ZBIC compression, swaps the sdk, adds a module that fills in the missing functions. The same module loads mods without LayeredFS.",

@@ -29,5 +29,10 @@ void ecb_encrypt(const uint8_t key[16], const uint8_t* in, uint8_t* out, size_t 
 void ecb_decrypt(const uint8_t key[16], const uint8_t* in, uint8_t* out, size_t n);
 // CTR: iv — счётчик первого блока (big-endian 128 бит, как у Switch); n любое; in и out могут совпадать.
 void ctr_crypt(const uint8_t key[16], const uint8_t iv[16], const uint8_t* in, uint8_t* out, size_t n);
+// AES-128-XTS с «Nintendo-tweak» (номер сектора big-endian, как заголовок NCA): key — 32 байта (ключ данных + ключ
+// tweak), секторы по sector_size начиная с first_sector; n кратно 16, на месте. Хост-тесты форвардера (на консоли
+// заголовок шифрует libnx aes128Xts*).
+void xts_nintendo(const uint8_t key[32], uint64_t first_sector, size_t sector_size, uint8_t* data, size_t n,
+                  bool encrypt);
 
 }  // namespace mk::aes

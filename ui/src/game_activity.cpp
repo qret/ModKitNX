@@ -35,7 +35,7 @@ std::string updateNumber(uint32_t v) { return std::to_string(v >> 16); }
 
 }  // namespace
 
-GameActivity::GameActivity(const GameRow& row, std::function<void(const GameRow&)> onRowChanged)
+GameActivity::GameActivity(const GameRow& row, RowChanged onRowChanged)
     : row_(row), onRowChanged_(std::move(onRowChanged)) {}
 
 GameActivity::~GameActivity() { *alive_ = false; }
@@ -89,7 +89,7 @@ void GameActivity::reload() {
             // Флажок «Отладочная сборка» отражает то, что стоит сейчас (квитанция); без нашей установки — выключен.
             debug_ = d_.ourInstalled && d_.debugInstalled;
             build();
-            if (onRowChanged_) onRowChanged_(d_.row);
+            if (onRowChanged_) onRowChanged_(d_.row, false);   // строка не изменилась — список не перестраивается
         });
     });
 }
@@ -951,16 +951,28 @@ void GameActivity::startOperation(OpKind op, bool withSdk) {
 void GameActivity::returnToList(bool removal) {
     // Вызывается из колбэка закрытия экрана операции: он уже снят со стека, сверху — этот экран.
     const GameRow row = row_;
-    std::function<void(const GameRow&)> cb = onRowChanged_;
+    RowChanged cb = onRowChanged_;
+    AliveToken alive = alive_;
     brls::Application::notify(trf(removal ? "op/removed_toast" : "op/done_toast", row.name));
-    // Значки строки («Мод установлен», «sdk подменена») — перечитать игру в фоне; список проверяет, жив ли он.
-    brls::async([cb, row]() {
-        mk::app::GameDetails d = mk::app::Model::instance().loadDetails(row);
-        brls::sync([cb, r = d.row]() {
-            if (cb) cb(r);
+    // Сначала строка (лёгкое перечитывание одной игры), потом возврат: список получает её, пока он ещё под этой
+    // страницей, и применяет в onResume — метки новые сразу, фокус на этой игре. Раньше: полный loadDetails в фоне
+    // (exefs, скан всех sdk — секунды) и reloadData уже под фокусом снятой ячейки (рамка на чужой игре).
+    brls::Application::blockInputs();
+    brls::async([this, cb, row, alive]() {
+        // Любое исключение — строка как была, но ввод ОБЯЗАТЕЛЬНО разблокируется (ниже, в sync).
+        GameRow r = row;
+        try {
+            r = mk::app::Model::instance().refreshRow(row);
+        } catch (...) {
+        }
+        brls::sync([this, cb, r, alive]() {
+            if (cb) cb(r, true);   // список сам проверяет, жив ли он
+            brls::Application::unblockInputs();
+            if (!*alive) return;
+            const auto stack = brls::Application::getActivitiesStack();
+            if (!stack.empty() && stack.back() == this) brls::Application::popActivity(brls::TransitionAnimation::FADE);
         });
     });
-    brls::Application::popActivity(brls::TransitionAnimation::FADE);
 }
 
 }  // namespace mk::ui

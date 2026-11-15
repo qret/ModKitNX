@@ -30,6 +30,8 @@ struct SdkScanStats {
 };
 
 // Блокирующий обход карты — из фонового потока. Порядок — как вернуло ядро (по местам).
-std::vector<FoundSdk> scanSdk(SdkScanStats& stats);
+// useCache — опознание по кэшу отпечатков sdmc:/switch/<APP>/cache/sdk-files.json (файл с тем же размером, mtime
+// и началом не читается целиком); false — всё живьём (Y «Обновить»), кэш перезаписывается.
+std::vector<FoundSdk> scanSdk(SdkScanStats& stats, bool useCache = true);
 
 }  // namespace mk::plat

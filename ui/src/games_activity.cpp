@@ -4,10 +4,12 @@
 #include "ui/games_activity.hpp"
 
 #include "app_model.hpp"
+#include "ui/forwarder_ui.hpp"
 #include "ui/game_activity.hpp"
 #include "ui/language_activity.hpp"
 #include "ui/settings_activity.hpp"
 #include "ui/text_sheet.hpp"
+#include "ui/update_ui.hpp"
 
 namespace mk::ui {
 
@@ -75,8 +77,8 @@ public:
         if (index.row < 0 || static_cast<size_t>(index.row) >= a_->rows_.size()) return;
         GamesActivity* owner = a_;
         AliveToken alive = owner->alive_;
-        brls::Application::pushActivity(new GameActivity(a_->rows_[index.row], [owner, alive](const GameRow& r) {
-            if (*alive) owner->updateRow(r);
+        brls::Application::pushActivity(new GameActivity(a_->rows_[index.row], [owner, alive](const GameRow& r, bool focus) {
+            if (*alive) owner->updateRow(r, focus);
         }));
     }
 
@@ -86,7 +88,8 @@ private:
 
 // ---------------- экран ----------------
 
-GamesActivity::GamesActivity(bool askLanguage) : askLanguage_(askLanguage) {}
+GamesActivity::GamesActivity(bool askLanguage, bool startupPrompts)
+    : askLanguage_(askLanguage), startupPrompts_(startupPrompts) {}
 
 GamesActivity::~GamesActivity() { *alive_ = false; }
 
@@ -110,12 +113,16 @@ void GamesActivity::onContentAvailable() {
                 askLanguage_ = false;
                 applyTexts();
                 reload();
+                // Первый запуск: после языка — вопрос о ярлыке; обновление при первом запуске не проверяется.
+                if (startupPrompts_) forwarder::offerOnce(nullptr);
             }));
         });
         return;
     }
     applyTexts();
     reload();
+    // Уже пользуются (язык выбран, ответа о ярлыке нет) — вопрос один раз; иначе тихая проверка обновления.
+    if (startupPrompts_) forwarder::offerOnce([] { update::startupCheck(); });
 }
 
 void GamesActivity::applyTexts() {
@@ -137,7 +144,7 @@ void GamesActivity::applyTexts() {
         return true;
     });
     registerAction(tr("hint/refresh"), brls::ControllerButton::BUTTON_Y, [this](brls::View*) {
-        reload();
+        reload(true);   // полный проход мимо кэша
         return true;
     });
 
@@ -153,21 +160,24 @@ void GamesActivity::showStatus(const std::string& text) {
     brls::Application::giveFocus(statusBox);
 }
 
-void GamesActivity::reload() {
+void GamesActivity::reload(bool bypassCache) {
     if (loading_) return;
+    // Y «Обновить»: фокус остаётся на той же игре (раньше прыгал на первую).
+    const uint64_t keep = bypassCache ? focusedId() : 0;
     loading_ = true;
+    pendingApply_ = false;
     showStatus(tr("games/loading"));
     countLine->setText("");
     AliveToken alive = alive_;
-    brls::async([this, alive]() {
+    brls::async([this, alive, bypassCache, keep]() {
         auto& m = mk::app::Model::instance();
         std::vector<GameRow> rows;
         const bool ok = m.servicesOk();
         if (ok) {
-            rows = m.loadGames();
-            (void)m.sdkList(true);  // обновить и список sdk — он нужен на экране игры
+            rows = m.loadGames(bypassCache);
+            (void)m.sdkList(true, bypassCache);  // обновить и список sdk — он нужен на экране игры
         }
-        brls::sync([this, alive, ok, rows = std::move(rows)]() mutable {
+        brls::sync([this, alive, ok, keep, rows = std::move(rows)]() mutable {
             if (!*alive) return;
             loading_ = false;
             rows_ = std::move(rows);
@@ -182,21 +192,66 @@ void GamesActivity::reload() {
             countLine->setText(trf("games/count", std::to_string(rows_.size())));
             statusBox->setVisibility(brls::Visibility::GONE);
             list->setVisibility(brls::Visibility::VISIBLE);
-            list->reloadData();
-            brls::Application::giveFocus(list);
+            applyRows(keep);
         });
     });
 }
 
-void GamesActivity::updateRow(const GameRow& row) {
+uint64_t GamesActivity::focusedId() const {
+    auto* cell = dynamic_cast<brls::RecyclerCell*>(brls::Application::getCurrentFocus());
+    if (!cell || cell->getParentActivity() != this) return 0;
+    const int i = cell->getIndexPath().row;
+    return (i >= 0 && static_cast<size_t>(i) < rows_.size()) ? rows_[i].id : 0;
+}
+
+void GamesActivity::applyRows(uint64_t focusId) {
+    pendingApply_ = false;
+    if (rows_.empty()) return;
+    int idx = 0;
+    for (size_t i = 0; i < rows_.size(); ++i)
+        if (rows_[i].id == focusId) idx = static_cast<int>(i);
+    // reloadData в конце сам выбирает defaultCellFocus (центрирует строку и делает её запомненной), giveFocus(list)
+    // уводит фокус со снятой ячейки на эту строку.
+    list->setDefaultCellFocus(brls::IndexPath(0, idx));
+    list->reloadData();
+    brls::Application::giveFocus(list);
+}
+
+void GamesActivity::onResume() {
+    if (!pendingApply_) return;
+    // popActivity зовёт onResume ДО того, как вернёт фокус на запомненный вид (указатель на ячейку, которую
+    // reloadData уже отдала другой игре), — поэтому применяем следующим кадром, после него.
+    AliveToken alive = alive_;
+    brls::sync([this, alive] {
+        if (!*alive || !pendingApply_ || loading_) return;
+        applyRows(pendingFocus_);
+    });
+}
+
+void GamesActivity::updateRow(const GameRow& row, bool focus) {
+    bool changed = false;
     for (auto& r : rows_) {
-        if (r.id == row.id) {
-            r.ourInstalled = row.ourInstalled;
-            r.sdkNeed = row.sdkNeed;
-            if (!row.gameSdk.empty()) r.gameSdk = row.gameSdk;
-        }
+        if (r.id != row.id) continue;
+        const std::string sdk = row.gameSdk.empty() ? r.gameSdk : row.gameSdk;
+        changed = r.ourInstalled != row.ourInstalled || r.sdkNeed != row.sdkNeed ||
+                  r.modsAvailable != row.modsAvailable || r.gameSdk != sdk;
+        r.ourInstalled = row.ourInstalled;
+        r.sdkNeed = row.sdkNeed;
+        r.modsAvailable = row.modsAvailable;
+        r.gameSdk = sdk;
     }
-    if (!rows_.empty()) list->reloadData();
+    if (rows_.empty() || loading_ || (!changed && !focus && !pendingApply_)) return;
+    const auto stack = brls::Application::getActivitiesStack();
+    if (!stack.empty() && stack.back() == this) {
+        // Список уже сверху (ответ пришёл позже, пользователь мог уйти на другую строку) — фокус там, где он есть;
+        // после операции — на эту игру.
+        const uint64_t here = focusedId();
+        applyRows(focus || here == 0 ? row.id : here);
+        return;
+    }
+    if (!changed && !focus) return;   // уже ждёт применения — с прежней игрой фокуса
+    pendingApply_ = true;
+    pendingFocus_ = row.id;
 }
 
 }  // namespace mk::ui

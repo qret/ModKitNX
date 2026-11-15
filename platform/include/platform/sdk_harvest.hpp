@@ -18,7 +18,7 @@
 
 namespace mk::plat {
 
-inline const std::string kSdkScanCache = paths::kAppDir + "cache/sdk-scan.json";
+inline const std::string kSdkScanCache = paths::kCacheDir + "sdk-scan.json";
 
 struct HarvestScan {
     size_t total = 0;        // установленных игр

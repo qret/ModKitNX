@@ -3,6 +3,7 @@
 // превращается в код и текст ошибки. См. source/core_bridge.hpp.
 #include "core_bridge.hpp"
 
+#include <mk/cache.hpp>
 #include <mk/core.hpp>
 #include <mk/install.hpp>
 #include <mk/logs.hpp>
@@ -28,6 +29,7 @@
 #include "platform/file_time.hpp"
 #include "platform/log.hpp"
 #include "platform/paths.hpp"
+#include "platform/timing.hpp"
 
 namespace mk::bridge {
 
@@ -160,6 +162,7 @@ bool identifySdk(const std::string& path, SdkProbe& out) {
         out.isNso = true;
         out.isNnSdk = f->nnsdk;
         out.moduleName = f->module_name;
+        out.sha256 = f->sha256;
         if (f->version) out.mwVersion = mk::version_text(*f->version);
         return true;
     } catch (const mk::Error& e) {
@@ -168,12 +171,43 @@ bool identifySdk(const std::string& path, SdkProbe& out) {
     }
 }
 
-bool inspectGame(const GameCtx& g, app::GameDetails& d) {
-    mk::Env e = env();
-    bool ok = true;
-    const std::string titleDir = mk::title_dir_of(kDest, g.tid);
+namespace {
 
-    // Квитанция и наше в папке игры.
+std::string checkPathFor(const std::string& tid) { return plat::paths::kGameCheckCacheDir + upper(tid) + ".json"; }
+
+// «Чем открыта exefs» — для «Технических подробностей» при показе из кэша.
+nlohmann::json exefsToJson(const plat::ExefsReport& r) {
+    return nlohmann::json{{"via", static_cast<int>(r.via)},  {"rc_with_id", r.rcWithId},
+                          {"rc_with_patch", r.rcWithPatch},   {"keys", r.keysPresent},
+                          {"main_npdm", r.hasMainNpdm},       {"raw_tried", r.rawTried},
+                          {"raw_step", r.rawStep},            {"rc_raw", r.rcRaw},
+                          {"raw_core", r.rawCore},            {"raw_rights_id", r.rawRightsId},
+                          {"raw_personalized", r.rawPersonalized}};
+}
+void exefsFromJson(const nlohmann::json& j, plat::ExefsReport& r) {
+    r = plat::ExefsReport{};
+    try {
+        const int via = j.at("via").get<int>();
+        if (via >= 0 && via <= static_cast<int>(plat::ExefsVia::RawNcaWithKeys)) r.via = static_cast<plat::ExefsVia>(via);
+        r.rcWithId = j.at("rc_with_id").get<uint32_t>();
+        r.rcWithPatch = j.at("rc_with_patch").get<uint32_t>();
+        r.keysPresent = j.at("keys").get<bool>();
+        r.hasMainNpdm = j.at("main_npdm").get<bool>();
+        r.rawTried = j.at("raw_tried").get<bool>();
+        r.rawStep = j.at("raw_step").get<std::string>();
+        r.rcRaw = j.at("rc_raw").get<uint32_t>();
+        r.rawCore = j.at("raw_core").get<std::string>();
+        r.rawRightsId = j.at("raw_rights_id").get<bool>();
+        r.rawPersonalized = j.at("raw_personalized").get<bool>();
+    } catch (const std::exception&) {
+        // сведения для подробностей; неполные — показываем, что есть
+    }
+}
+
+// Квитанция и наше в папке игры — всегда живьём (это состояние меняет пользователь и наши операции).
+// ZBIC уже снят нами — по ModuleId игры: из кэша (ids) или по смонтированной exefs.
+bool inspectReceipt(mk::Env& e, const GameCtx& g, app::GameDetails& d, const std::map<std::string, std::string>* ids) {
+    const std::string titleDir = mk::title_dir_of(kDest, g.tid);
     try {
         const mk::InstalledState st = mk::inspect_installed(e, kDest, g.tid);
         d.ourInstalled = st.receipt.sane();
@@ -204,104 +238,192 @@ bool inspectGame(const GameCtx& g, app::GameDetails& d) {
         }
         d.receiptStale = st.module_matches.has_value() && !*st.module_matches;
         // ZBIC уже снят нами: все файлы zbic_files квитанции лежат в exefs папки игры и собраны из этой версии игры.
-        if (d.ourInstalled && g.exefsOpen) {
+        if (d.ourInstalled && (ids || g.exefsOpen)) {
             const auto& r = st.receipt.data;
             if (r.contains("zbic_files") && r["zbic_files"].is_array() && !r["zbic_files"].empty()) {
                 bool all = true;
                 for (const auto& z : r["zbic_files"])
                     all &= z.is_string() && e.fs.is_file(mk::path_join(titleDir + "/exefs", z.get<std::string>()));
-                const auto same = all ? mk::installed_matches_game(e, kDest, g.tid, exefsRoot()) : std::nullopt;
+                std::optional<bool> same;
+                if (all) same = ids ? mk::installed_matches_game(e, kDest, g.tid, *ids)
+                                    : mk::installed_matches_game(e, kDest, g.tid, exefsRoot());
                 d.zbicUnpackedOurs = all && same.value_or(true);
             }
         }
+        return true;
     } catch (const mk::Error& ex) {
-        ok = false;
         d.coreError = errorText(ex);
         MK_LOG("bridge: inspect_installed %s: %s", ex.code().c_str(), ex.what());
+        return false;
     }
-
-    // ZBIC и собственная sdk игры — по exefs.
-    if (g.exefsOpen) {
-        try {
-            const mk::ZbicScan z = mk::zbic_scan(e.fs, exefsRoot());
-            d.zbic = z.zbic();
-            d.zbicFiles = z.zbic_files;
-        } catch (const mk::Error& ex) {
-            ok = false;
-            d.coreError = errorText(ex);
-        }
-        SdkProbe own;
-        if (identifySdk(exefsRoot() + "sdk", own) && own.isNnSdk) d.sdk.exefsSdk = own.mwVersion;
-    } else {
-        ok = false;
-    }
-
-    // Лежащий exefs/sdk (подмена).
-    const std::string swapPath = titleDir + "/exefs/sdk";
-    d.sdk.swapPresent = e.fs.is_file(swapPath);
-    if (d.sdk.swapPresent) {
-        SdkProbe p;
-        d.sdk.swapIsNnSdk = identifySdk(swapPath, p) && p.isNnSdk;
-        d.sdk.swapVersion = p.mwVersion;
-    }
-    d.coreOk = ok;
-    return ok;
 }
 
-void forecastFixes(const GameCtx& g, const std::string& currentSdkPath, bool currentIsSwap,
-                   const std::vector<std::pair<std::string, std::string>>& candidates, app::GameDetails& d) {
-    static std::mutex cacheMtx;
-    static std::map<std::string, mk::ForecastSdk> cache;   // путь + "|" + sha256 -> сторона sdk
+// Стороны sdk в памяти — по sha256 содержимого (тот же файл в своей папке и в DBI — один разбор; переименование
+// не мешает). Полные: урезаются под игру при выдаче.
+std::mutex g_sideMtx;
+std::map<std::string, mk::ForecastSdk> g_sides;
+
+}  // namespace
+
+void clearMemoryCache() {
+    std::lock_guard<std::mutex> lock(g_sideMtx);
+    g_sides.clear();
+}
+
+bool dropGameCheck(const std::string& tid) {
     mk::Env e = env();
+    const std::string p = checkPathFor(tid);
+    try {
+        if (!e.fs.is_file(p)) return true;
+        e.fs.remove_file(p);   // файл кэша приложения (не данные пользователя): проверится заново
+        return true;
+    } catch (const std::exception& ex) {
+        MK_LOG("bridge: game check cache %s not dropped: %s", p.c_str(), ex.what());
+        return false;
+    }
+}
+
+void checkGame(const GameCtx& g0, const CheckKeys& k, const std::function<bool(plat::ExefsReport&)>& openExefs,
+               const std::string& swapPath, const std::string& swapSha,
+               const std::vector<std::pair<std::string, std::string>>& candidates, app::GameDetails& d) {
+    namespace C = mk::cache;
+    const uint64_t t0 = plat::nowMs();
+    mk::Env e = env();
+    GameCtx g = g0;
+    const std::string app = C::app_key(MK_APP_VERSION);
+    const std::string cpath = checkPathFor(g.tid);
+    std::optional<C::GameCheck> c;
+    if (k.useCache && !k.key.empty()) c = C::parse_game_check(C::read_cache_file(e, cpath), app, k.key, k.fw, k.ams);
+
+    bool zbicOk = false, gameOk = false, cacheable = false, dirty = false;
     app::FixesBlock& b = d.fixes;
     b = app::FixesBlock{};
-    b.currentIsSwap = currentIsSwap;
+    b.currentIsSwap = !swapPath.empty();
     b.bySdk.resize(candidates.size());
-    if (!g.exefsOpen) return;
-    mk::ForecastGame game;
-    try {
-        game = mk::forecast_game(e, exefsRoot());
-        app::fillFixesGame(b, game);
-        if (!game.own_sdk_ok) MK_LOG("bridge: sdk gaps: own sdk not read (%s) - not checked", game.own_sdk_error.c_str());
-    } catch (const mk::Error& ex) {
-        b.error = errorText(ex);
-        MK_LOG("bridge: forecast_game %s: %s", ex.code().c_str(), ex.what());
-        return;
-    }
-    auto one = [&](const std::string& path, const std::string& key) {
-        app::FixForecastView v;
-        try {
-            mk::ForecastSdk s;
-            bool have = false;
-            if (!key.empty()) {
-                std::lock_guard<std::mutex> lock(cacheMtx);
-                auto it = cache.find(key);
-                if (it != cache.end()) { s = it->second; have = true; }
+    if (c) {
+        d.checkFromCache = true;
+        d.exefsOpened = true;
+        exefsFromJson(c->exefs, d.exefs);
+        zbicOk = gameOk = true;
+    } else {
+        const uint64_t t1 = plat::nowMs();
+        d.exefsOpened = openExefs && openExefs(d.exefs);
+        g.exefsOpen = d.exefsOpened;
+        MK_LOG("model: step exefs open %s ok=%d %llu ms", g.tid.c_str(), d.exefsOpened, plat::msSince(t1));
+        if (d.exefsOpened) {
+            C::GameCheck n;
+            n.key = k.key;
+            n.fw = k.fw;
+            n.ams = k.ams;
+            n.exefs = exefsToJson(d.exefs);
+            try {
+                const mk::ZbicScan z = mk::zbic_scan(e.fs, exefsRoot());
+                n.zbic = z.zbic();
+                n.zbic_files = z.zbic_files;
+                n.module_ids = mk::exefs_module_ids(e, exefsRoot());
+                zbicOk = true;
+            } catch (const mk::Error& ex) {
+                d.coreError = errorText(ex);
+                MK_LOG("bridge: zbic_scan %s: %s", ex.code().c_str(), ex.what());
             }
-            if (!have) {
-                s = mk::forecast_sdk(e, path);
-                if (!key.empty()) {
-                    std::lock_guard<std::mutex> lock(cacheMtx);
-                    cache[key] = s;
-                }
+            const uint64_t t2 = plat::nowMs();
+            try {
+                mk::ForecastSdk own;
+                const mk::ForecastGame full = mk::forecast_game(e, exefsRoot(), &own);
+                if (!full.own_sdk_ok) MK_LOG("bridge: sdk gaps: own sdk not read (%s) - not checked", full.own_sdk_error.c_str());
+                n.game = C::compact_game(full);   // и живьём, и из кэша — один и тот же урезанный вид
+                if (full.own_sdk_ok) n.own_side = C::restrict_sdk(own, n.game);
+                gameOk = true;
+                // Временный сбой чтения своей sdk (не «её нет») — в кэш не пишем, проверим в следующий раз.
+                cacheable = zbicOk && (full.own_sdk_ok || full.own_sdk_error == "SDK_ABSENT");
+            } catch (const mk::Error& ex) {
+                b.error = errorText(ex);
+                MK_LOG("bridge: forecast_game %s: %s", ex.code().c_str(), ex.what());
             }
-            v = app::fixesView(game, s);
-            // Полный список пробелов — в журнал приложения (для разработчика: что добавить в каталог).
-            if (!v.gaps.empty()) MK_LOG("bridge: sdk gaps %s: %zu not covered by the module", path.c_str(), v.gaps.size());
-            for (const auto& gp : v.gaps) {
-                std::string who;
-                for (const auto& m : gp.importers) who += (who.empty() ? "" : ",") + m;
-                MK_LOG("bridge:   %s %s%s [%s]", gp.kind.c_str(), gp.symbol.c_str(), gp.weak ? " (weak)" : "", who.c_str());
-            }
-        } catch (const mk::Error& ex) {
-            v.error = errorText(ex);
-            MK_LOG("bridge: forecast_sdk %s: %s %s", path.c_str(), ex.code().c_str(), ex.what());
+            MK_LOG("model: step forecast_game %s %llu ms", g.tid.c_str(), plat::msSince(t2));
+            c = std::move(n);
         }
-        return v;
-    };
-    if (!currentSdkPath.empty() && e.fs.is_file(currentSdkPath)) b.current = one(currentSdkPath, "");
-    for (size_t i = 0; i < candidates.size(); ++i)
-        b.bySdk[i] = one(candidates[i].first, candidates[i].second.empty() ? "" : candidates[i].first + "|" + candidates[i].second);
+    }
+
+    const bool receiptOk = inspectReceipt(e, g, d, (c && !g.exefsOpen) ? &c->module_ids : nullptr);
+    if (c && zbicOk) {
+        d.zbic = c->zbic;
+        d.zbicFiles = c->zbic_files;
+    }
+    if (c && c->own_side && c->own_side->known && c->own_side->version)
+        d.sdk.exefsSdk = mk::version_text(*c->own_side->version);
+    d.coreOk = receiptOk && zbicOk;
+
+    if (c && gameOk) {
+        const mk::ForecastGame& game = c->game;
+        app::fillFixesGame(b, game);
+        // Сторона sdk: кэш игры (by_sdk по sha256) → память → файл. Ошибка — в строку прогноза, не в кэш.
+        auto side = [&](const std::string& path, const std::string& sha) -> app::FixForecastView {
+            app::FixForecastView v;
+            try {
+                std::optional<mk::ForecastSdk> s;
+                if (!sha.empty()) {
+                    auto it = c->by_sdk.find(sha);
+                    if (it != c->by_sdk.end()) s = it->second;
+                }
+                if (!s) {
+                    mk::ForecastSdk full;
+                    bool have = false;
+                    if (!sha.empty()) {
+                        std::lock_guard<std::mutex> lock(g_sideMtx);
+                        auto it = g_sides.find(sha);
+                        if (it != g_sides.end()) {
+                            full = it->second;
+                            have = true;
+                        }
+                    }
+                    if (!have) {
+                        const uint64_t t3 = plat::nowMs();
+                        full = mk::forecast_sdk(e, path);
+                        MK_LOG("model: step forecast_sdk %s %llu ms", path.c_str(), plat::msSince(t3));
+                        if (!sha.empty()) {
+                            std::lock_guard<std::mutex> lock(g_sideMtx);
+                            g_sides[sha] = full;
+                        }
+                    }
+                    s = C::restrict_sdk(full, game);
+                    if (!sha.empty()) {
+                        c->by_sdk[sha] = *s;
+                        dirty = true;
+                    }
+                }
+                v = app::fixesView(game, *s);
+                // Полный список пробелов — в журнал приложения (для разработчика: что добавить в каталог).
+                if (!v.gaps.empty()) MK_LOG("bridge: sdk gaps %s: %zu not covered by the module", path.c_str(), v.gaps.size());
+                for (const auto& gp : v.gaps) {
+                    std::string who;
+                    for (const auto& m : gp.importers) who += (who.empty() ? "" : ",") + m;
+                    MK_LOG("bridge:   %s %s%s [%s]", gp.kind.c_str(), gp.symbol.c_str(), gp.weak ? " (weak)" : "", who.c_str());
+                }
+            } catch (const mk::Error& ex) {
+                v.error = errorText(ex);
+                MK_LOG("bridge: forecast_sdk %s: %s %s", path.c_str(), ex.code().c_str(), ex.what());
+            }
+            return v;
+        };
+        if (!swapPath.empty()) {
+            if (e.fs.is_file(swapPath)) b.current = side(swapPath, swapSha);
+        } else if (c->own_side) {
+            b.current = app::fixesView(game, *c->own_side);
+        }
+        for (size_t i = 0; i < candidates.size(); ++i) b.bySdk[i] = side(candidates[i].first, candidates[i].second);
+    }
+
+    // Записать: свежая проверка без ошибок, или из кэша дописаны новые стороны sdk. Один файл на игру.
+    if (c && !k.key.empty() && ((d.checkFromCache && dirty) || (!d.checkFromCache && cacheable))) {
+        try {
+            C::write_cache_file(e, cpath, C::dump_game_check(*c, app));
+        } catch (const std::exception& ex) {
+            MK_LOG("bridge: game check cache not saved: %s", ex.what());
+        }
+    }
+    MK_LOG("model: step check %s cache=%s %llu ms", g.tid.c_str(), d.checkFromCache ? "hit" : (k.useCache ? "miss" : "bypass"),
+           plat::msSince(t0));
 }
 
 std::vector<app::ModLine> findMods(const GameCtx& g) {

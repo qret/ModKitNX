@@ -28,13 +28,25 @@ public:
     plat::ConsoleInfo console();  // быстро после первого вызова
 
     // Список игр (ns + NACP + заголовок NCA для значка sdk). Сортировка по названию.
-    std::vector<GameRow> loadGames();
+    // Кэш показа sdmc:/switch/<APP>/cache/games.json + icons/<TID>.jpg: название, версия, иконка и sdk игры — по
+    // признаку содержимого (content id program NCA); квитанция, моды и подмена sdk — живьём (подмена — по отпечатку
+    // файла). bypassCache — Y «Обновить»: всё живьём, кэш перезаписывается.
+    std::vector<GameRow> loadGames(bool bypassCache = false);
 
-    // sdk из двух папок без повторов. reload=false — из кэша.
-    std::vector<SdkLine> sdkList(bool reload = false);
+    // Одна строка списка живьём — тем же способом, что в loadGames (квитанция, моды, подмена sdk, значок sdk; без
+    // ns, exefs и скана sdk): после операции и при открытии страницы игры. gameSdk — из base.
+    GameRow refreshRow(const GameRow& base);
 
-    // Всё об одной игре: ncm, заголовок NCA, exefs, ядро, моды, блок sdk.
-    GameDetails loadDetails(const GameRow& row);
+    // sdk из двух папок без повторов. reload=false — из памяти; bypassCache — и мимо кэша отпечатков sdk-files.json.
+    std::vector<SdkLine> sdkList(bool reload = false, bool bypassCache = false);
+
+    // Всё об одной игре: ncm, заголовок NCA, exefs, ядро, моды, блок sdk. Данные ядра по exefs — из кэша
+    // game/<TID>.json, если игра, прошивка и Atmosphère те же (bypassCache — мимо). Только показ: plan/apply
+    // открывают exefs сами. d.row — метки строки тем же способом, что в списке (refreshRow).
+    GameDetails loadDetails(const GameRow& row, bool bypassCache = false);
+
+    // «Сбросить кэш» (настройки): файлы кэша показа приложения и память. Возвращает число убранных файлов.
+    size_t resetCache();
 
     // План и исполнение. Экран плана держит PlanView; apply исполняет последний построенный план.
     // debugBuild — «Отладочная сборка»: ядро ставит диагностический вариант модуля (autofix-diag / ранний).
@@ -56,9 +68,14 @@ public:
     // Сохранить строку index последнего поиска в sdmc:/switch/<APP>/sdk/<папка>/sdk + source.json.
     HarvestSaveView saveSdkFromGames(size_t index);
 
+    // Ярлык на домашнем экране (Р-43; блокирующие: ns, ncm, запись на карту). Только наш TitleID.
+    ForwarderView forwarderStatus();
+    ForwarderResult createForwarder();
+    ForwarderResult removeForwarder();
+
 private:
     Model() = default;
-    void scanSdkLocked();
+    void scanSdkLocked(bool useCache = true);
 
     bool servicesOk_ = false;
     std::mutex sdkMtx_;

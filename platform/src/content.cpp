@@ -71,6 +71,18 @@ constexpr NcmStorageId kStorages[] = {NcmStorageId_SdCard, NcmStorageId_BuiltInU
 
 }  // namespace
 
+std::string contentKeyOf(const ProgramNca& nca) {
+    char buf[64];
+    std::string id;
+    for (int i = 0; i < 0x10; ++i) {
+        std::snprintf(buf, sizeof(buf), "%02x", nca.contentId.c[i]);
+        id += buf;
+    }
+    std::snprintf(buf, sizeof(buf), ":%s:%u", nca.fromPatch ? "patch" : "base",
+                  nca.fromPatch ? nca.patchVersion : nca.baseVersion);
+    return id + buf;
+}
+
 std::string hosVersionText(uint32_t v) {
     char buf[32];
     std::snprintf(buf, sizeof(buf), "%u.%u.%u", (v >> 26) & 0x3F, (v >> 20) & 0x3F, (v >> 16) & 0xF);
@@ -188,6 +200,20 @@ bool readProgramNcaHeaderDecrypted(const ProgramNca& nca, std::array<uint8_t, 0x
         aes128XtsDecrypt(&xts, dec.data() + off, raw.data() + off, 0x200);
     }
     std::memset(&xts, 0, sizeof(xts));
+    return true;
+}
+
+bool encryptNcaHeader(uint8_t* header, size_t size, uint32_t& rc) {
+    const uint8_t* key = nullptr;
+    if (size != kHeaderSize || !headerKey(key, rc)) return false;
+    Aes128XtsContext xts;
+    aes128XtsContextCreate(&xts, key, key + 0x10, true);
+    for (size_t off = 0; off < kHeaderSize; off += 0x200) {
+        aes128XtsContextResetSector(&xts, off / 0x200, true);
+        aes128XtsEncrypt(&xts, header + off, header + off, 0x200);
+    }
+    std::memset(&xts, 0, sizeof(xts));
+    rc = 0;
     return true;
 }
 

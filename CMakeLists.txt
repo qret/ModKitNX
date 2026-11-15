@@ -143,6 +143,27 @@ pkg_check_modules(CURL_PC REQUIRED IMPORTED_TARGET libcurl)
 target_compile_definitions(${PROJECT_NAME} PRIVATE MK_HAVE_CURL=1)
 target_link_libraries(${PROJECT_NAME} PRIVATE borealis PkgConfig::CURL_PC PkgConfig::ZLIB_PC ${APP_LIBS} ${APP_PLATFORM_LIB})
 
+# ---------------------------------------------------------------- загрузчик ярлыка на домашнем экране (Р-43)
+# hbl/ — nx-hbloader в варианте sphaira (ISC, hbl/nx-hbloader.LICENSE.md; откуда и какой коммит — hbl/SOURCE.md),
+# собирается из исходников, как в sphaira (hbl/CMakeLists.txt sphaira: -wrap,exit, VERSION 3.0.0, C11 с расширениями):
+# exefs/main (elf2nso) и exefs/main.npdm (npdmtool hbl.json) кладутся в romfs:/forwarder/ — из них приложение собирает
+# Program NCA ярлыка (platform/forwarder). В git бинарников нет.
+find_program(MODKIT_ELF2NSO elf2nso HINTS "$ENV{DEVKITPRO}/tools/bin" REQUIRED)
+find_program(MODKIT_NPDMTOOL npdmtool HINTS "$ENV{DEVKITPRO}/tools/bin" REQUIRED)
+add_executable(modkit_hbl ${CMAKE_CURRENT_SOURCE_DIR}/hbl/source/main.c ${CMAKE_CURRENT_SOURCE_DIR}/hbl/source/trampoline.s)
+set_target_properties(modkit_hbl PROPERTIES C_STANDARD 11 C_EXTENSIONS ON)
+target_compile_definitions(modkit_hbl PRIVATE VERSION="3.0.0")
+target_link_options(modkit_hbl PRIVATE -Wl,-wrap,exit)
+set(HBL_EXEFS ${CMAKE_BINARY_DIR}/hbl-exefs)
+add_custom_command(OUTPUT ${HBL_EXEFS}/main ${HBL_EXEFS}/main.npdm
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${HBL_EXEFS}
+    COMMAND ${MODKIT_ELF2NSO} $<TARGET_FILE:modkit_hbl> ${HBL_EXEFS}/main
+    COMMAND ${MODKIT_NPDMTOOL} ${CMAKE_CURRENT_SOURCE_DIR}/hbl/hbl.json ${HBL_EXEFS}/main.npdm
+    DEPENDS modkit_hbl ${CMAKE_CURRENT_SOURCE_DIR}/hbl/hbl.json
+    COMMENT "Building the home screen shortcut loader (hbl)"
+    VERBATIM)
+add_custom_target(modkit_hbl_exefs DEPENDS ${HBL_EXEFS}/main ${HBL_EXEFS}/main.npdm)
+
 # ---------------------------------------------------------------- romfs + NACP + NRO
 # romfs = borealis resources (minus borealis' bundled font: it is Nintendo's, not ours to ship)
 #       + resources/ (our XML, i18n, images, UI font font/font.ttf)  + romfs/ (nxredirect modules, built from nxredirect/ by nxredirect/build-romfs-modules.sh).
@@ -177,11 +198,14 @@ endif ()
 # Renderer: OpenGL (mesa + glfw; default, as NX-torrent-player) or deko3d (-DUSE_DEKO3D=ON, needs only the
 # deko3d and uam packages). deko3d reads its shaders from romfs:/shaders/*.dksh — compiled here by uam at
 # configure time, as borealis/CMakeLists.txt (demo) does.
+list(APPEND ROMFS_COMMANDS
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${ROMFS_STAGE}/forwarder
+    COMMAND ${CMAKE_COMMAND} -E copy ${HBL_EXEFS}/main ${HBL_EXEFS}/main.npdm ${ROMFS_STAGE}/forwarder/)
 if (USE_DEKO3D)
     gen_dksh("${ROMFS_SHADERS}/shaders")
     list(APPEND ROMFS_COMMANDS COMMAND ${CMAKE_COMMAND} -E copy_directory ${ROMFS_SHADERS} ${ROMFS_STAGE})
 endif ()
-add_custom_target(${PROJECT_NAME}.nro ALL DEPENDS ${PROJECT_NAME}
+add_custom_target(${PROJECT_NAME}.nro ALL DEPENDS ${PROJECT_NAME} ${HBL_EXEFS}/main ${HBL_EXEFS}/main.npdm
     ${ROMFS_COMMANDS}
     COMMAND ${NX_NACPTOOL_EXE} --create "${APP_NAME}" "${APP_AUTHOR}" "${APP_VERSION}" ${PROJECT_NAME}.nacp
     COMMAND ${NX_ELF2NRO_EXE} ${PROJECT_NAME}.elf ${PROJECT_NAME}.nro --icon=${APP_ICON} --nacp=${PROJECT_NAME}.nacp --romfsdir=${ROMFS_STAGE}

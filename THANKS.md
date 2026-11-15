@@ -69,6 +69,8 @@ My heartfelt thanks to the **4IFIR community** — it keeps me motivated, and it
 | [glad](https://github.com/Dav1dde/glad) | David Herberth | OpenGL loader generated for Borealis (built in from Borealis) | generated code: public domain (WTFPL / CC0) |
 | [libretro-common](https://github.com/libretro/libretro-common) (`encoding_utf`, `compat_strl`, `features_cpu`) | The RetroArch team | UTF-8 helpers in Borealis (built in from Borealis) | MIT |
 | [exlaunch](https://github.com/shadowninja108/exlaunch) | shadowninja108 | base of the nxredirect exefs module | GPL-2.0 |
+| [sphaira](https://github.com/ITotalJustice/sphaira) | ITotalJustice | the HOME screen shortcut: building its NCAs on the console and installing them (`owo.cpp`, based on hacbrewpack and yati; adapted in `core/src/forwarder.cpp` and `platform/src/forwarder.cpp`, each with the line `Based on sphaira by ITotalJustice (GPL-3.0): <path in the original>`), and the shortcut's loader `hbl/` | GPL-3.0 (loader: ISC) |
+| [nx-hbloader](https://github.com/switchbrew/nx-hbloader) | nx-hbloader Authors (switchbrew) | the homebrew loader inside the shortcut — sphaira's version that reads the `.nro` path from romfs, built from `hbl/` unchanged (`hbl/SOURCE.md`) | ISC |
 | nxredirect | this project's author | the exefs file-redirect module shipped in romfs as separate files (aggregation) | GPL-2.0 |
 | Lockpick_RCM | shchmue and forks (the original GitHub repository is unavailable) | recommended for dumping console keys (not bundled) | GPL-2.0 |
 
@@ -147,6 +149,8 @@ ModKitNX is not affiliated with Nintendo or with any of the projects above.
 | [glad](https://github.com/Dav1dde/glad) | David Herberth | загрузчик OpenGL, сгенерированный для Borealis (входит в Borealis) | сгенерированный код: общественное достояние (WTFPL / CC0) |
 | [libretro-common](https://github.com/libretro/libretro-common) (`encoding_utf`, `compat_strl`, `features_cpu`) | команда RetroArch | работа с UTF-8 в Borealis (входит в Borealis) | MIT |
 | [exlaunch](https://github.com/shadowninja108/exlaunch) | shadowninja108 | основа exefs-модуля nxredirect | GPL-2.0 |
+| [sphaira](https://github.com/ITotalJustice/sphaira) | ITotalJustice | ярлык на домашнем экране: сборка его NCA прямо на консоли и установка (`owo.cpp`, по мотивам hacbrewpack и yati; переделано в `core/src/forwarder.cpp` и `platform/src/forwarder.cpp`, в шапке каждого — строка `Based on sphaira by ITotalJustice (GPL-3.0): <путь в оригинале>`) и загрузчик ярлыка `hbl/` | GPL-3.0 (загрузчик — ISC) |
+| [nx-hbloader](https://github.com/switchbrew/nx-hbloader) | nx-hbloader Authors (switchbrew) | загрузчик homebrew внутри ярлыка — вариант sphaira, который берёт путь к `.nro` из romfs; собирается из `hbl/` без изменений (`hbl/SOURCE.md`) | ISC |
 | nxredirect | автор этого проекта | exefs-модуль подмены файлов, лежит в romfs отдельными файлами (агрегация) | GPL-2.0 |
 | Lockpick_RCM | shchmue и форки (исходный репозиторий на GitHub недоступен) | рекомендуется, чтобы снять ключи консоли (в комплект не входит) | GPL-2.0 |
 

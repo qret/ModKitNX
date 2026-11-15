@@ -55,6 +55,14 @@ bool readProgramNcaHeader(const ProgramNca& nca, NcaHeaderInfo& out);
 // rc — код отказа (spl или ncm), 0 при успехе. Заголовок не содержит ключей в открытом виде (key area зашифрована).
 bool readProgramNcaHeaderDecrypted(const ProgramNca& nca, std::array<uint8_t, 0xC00>& dec, uint32_t& rc);
 
+// Шифрование заголовка NCA (0xC00) на месте ключом заголовка консоли (spl), AES-128-XTS «Nintendo-tweak» —
+// для форвардера (platform/forwarder). Ключ не покидает content.cpp. false — spl не дал ключа (rc — код).
+bool encryptNcaHeader(uint8_t* header, size_t size, uint32_t& rc);
+
+// Признак содержимого игры: hex(content id program NCA) + ":" + base|patch + ":" + номер версии записи ncm.
+// Меняется с каждым обновлением, откатом и переустановкой. Ключ кэшей sdk-scan.json, games.json, game/<TID>.json.
+std::string contentKeyOf(const ProgramNca& nca);
+
 // Текст «22.5.0» для required_system_version (major<<26 | minor<<20 | micro<<16).
 std::string hosVersionText(uint32_t v);
 

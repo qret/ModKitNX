@@ -12,6 +12,7 @@
 #include <memory>
 
 #include "platform/log.hpp"
+#include <mk/forwarder.hpp>
 #include <mk/nacp.hpp>
 
 #include "platform/service_lock.hpp"
@@ -32,9 +33,9 @@ bool listApplicationIds(std::vector<uint64_t>& out) {
             return offset > 0;
         }
         for (s32 i = 0; i < count; ++i) {
-            // Ярлык Homebrew Menu на главном экране (форвардер hbmenu) — не игра: в список не берём
-            // (иначе в списке строка «Homebrew Menu, версия FWD, sdk 0.12.17»).
-            if (batch[i].application_id == 0x0104444444444000ULL) continue;
+            // Не игры — в список не берём: ярлык Homebrew Menu (иначе строка «Homebrew Menu, версия FWD,
+            // sdk 0.12.17») и все форвардеры 05… — наш ярлык и созданные в sphaira (Р-43).
+            if (mk::forwarder::hidden_from_games(batch[i].application_id)) continue;
             out.push_back(batch[i].application_id);
         }
         offset += count;

@@ -30,6 +30,21 @@ inline Text textOf(std::string key, std::vector<std::string> args = {}) {
     return t;
 }
 
+// Ярлык на домашнем экране (Р-43, platform/forwarder).
+struct ForwarderView {
+    bool known = false;          // состояние прочитано
+    bool installed = false;      // ярлык с нашим TitleID есть (наш или созданный в sphaira на тот же .nro)
+    bool runningFromIt = false;  // приложение запущено с этого ярлыка
+    bool nroPresent = false;     // sdmc:/switch/<APP>/<APP>.nro на месте — его ярлык и запускает
+    std::string tid;             // 16 hex
+};
+// Итог «Создать» / «Удалить»: code — ключ текста ошибки (app.json forwarder/err_<code>), rc — код системы (hex).
+struct ForwarderResult {
+    bool ok = false;
+    std::string code;
+    std::string rc;
+};
+
 // Строка списка игр.
 struct GameRow {
     uint64_t id = 0;
@@ -138,7 +153,8 @@ struct GameDetails {
     bool hasRightsId = false;
 
     plat::ExefsReport exefs;
-    bool exefsOpened = false;
+    bool exefsOpened = false;       // exefs открывалась (сейчас или когда писался кэш проверки игры)
+    bool checkFromCache = false;    // проверка игры (ZBIC, своя sdk, импорты) — из кэша game/<TID>.json, exefs не открывалась
 
     bool coreOk = false;            // ядро ответило на inspect
     Text coreError;

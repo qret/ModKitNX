@@ -9,6 +9,7 @@
 #include "mk/plan.hpp"
 
 #include <nlohmann/json.hpp>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -52,6 +53,11 @@ struct SdkRoot {
 };
 std::vector<SdkEntry> scan_sdk(Env& env, const std::vector<SdkRoot>& roots, int max_depth = 2,
                                std::vector<SdkFile>* rejected = nullptr);
+// То же, но опознание файла — своей функцией (кэш отпечатков mk::cache::scan_sdk_cached: совпал отпечаток — без
+// чтения файла целиком). identify(path, label) — как identify_sdk.
+using SdkIdentifyFn = std::function<std::optional<SdkFile>(const std::string& path, const std::string& label)>;
+std::vector<SdkEntry> scan_sdk_with(Env& env, const std::vector<SdkRoot>& roots, const SdkIdentifyFn& identify,
+                                    int max_depth = 2, std::vector<SdkFile>* rejected = nullptr);
 
 // ------------------------------------------------------------ stubdiff
 bool is_return_const_stub(uint32_t i0, uint32_t i1);
@@ -142,8 +148,11 @@ struct RoFixForecast {
 };
 RoFixForecast forecast_ro_fix(const ForecastGame& game, const ForecastSdk& sdk);
 
-ForecastGame forecast_game(Env& env, const std::string& exefs);
+// own_side — не nullptr: сюда же сторона своей sdk игры (как forecast_sdk) из того же прочитанного образа exefs/sdk
+// (своя sdk игры читается один раз, а не трижды); не прочиталась — own_side не трогается.
+ForecastGame forecast_game(Env& env, const std::string& exefs, ForecastSdk* own_side = nullptr);
 ForecastSdk forecast_sdk(Env& env, const std::string& sdk_path);
+ForecastSdk forecast_sdk_of(const NsoImage& sdk);   // то же по уже прочитанному образу
 ModuleForecast forecast_fixes(const ForecastGame& game, const ForecastSdk& sdk);
 // Детектор: импорты игры, которых нет / заглушки в старой sdk.
 nlohmann::ordered_json sdk_detect(Env& env, const std::string& old_sdk, const std::string& new_sdk,

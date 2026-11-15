@@ -25,19 +25,33 @@ struct SdkProbe {
     bool isNnSdk = false;
     std::string moduleName;
     std::string mwVersion;    // «19.3.13» или ""
+    std::string sha256;       // содержимое файла (hex)
 };
 
-// Опознание NSO по содержимому (exefs/sdk игры, подменённая sdk) — mk::identify_sdk.
+// Опознание NSO по содержимому (подменённая sdk) — mk::identify_sdk.
 bool identifySdk(const std::string& path, SdkProbe& out);
 
-// Состояние игры: квитанция, ZBIC, собственная sdk игры, лежащий exefs/sdk. Заполняет поля d.
-bool inspectGame(const GameCtx& g, app::GameDetails& d);
+// Ключи кэша проверки игры sdmc:/switch/<APP>/cache/game/<TID>.json (mk::cache::GameCheck).
+struct CheckKeys {
+    std::string key;          // признак содержимого игры (plat::contentKeyOf); пусто — кэш не читается и не пишется
+    std::string fw, ams;      // прошивка и Atmosphère — от них зависит, как открывается exefs
+    bool useCache = true;     // false — мимо кэша (Y «Обновить», после операции); свежий результат перезаписывает кэш
+};
 
-// Блок «Что исправит модуль» (d.fixes): импорты main/subsdk игры (exefs должна быть смонтирована) × sdk.
-// currentSdkPath — sdk, которая у игры сейчас (подменённая на карте или родная mkexefs:/sdk), "" — нет;
-// candidates — найденные sdk (путь, sha256) по порядку SdkLine. Сторона sdk кэшируется по пути и sha256.
-void forecastFixes(const GameCtx& g, const std::string& currentSdkPath, bool currentIsSwap,
-                   const std::vector<std::pair<std::string, std::string>>& candidates, app::GameDetails& d);
+// Проверка игры для экрана (ТОЛЬКО показ; план и запись кэш не читают). Квитанция — живьём; ZBIC, своя sdk игры и
+// импорты — из кэша или из exefs: openExefs монтирует её как mkexefs:/ только при промахе (закрывает вызывающий).
+// «Что исправит модуль»: текущая sdk — подмена swapPath (sha256 swapSha) или, без подмены, своя sdk игры (из того
+// же чтения, что импорты); кандидаты — найденные sdk (путь, sha256) по порядку SdkLine. Стороны sdk — по sha256
+// (в кэше игры и в памяти). Ошибки и временные сбои в кэш не пишутся. Заполняет d: exefsOpened, exefs, coreOk,
+// zbic, zbicFiles, sdk.exefsSdk, квитанцию, fixes, checkFromCache.
+void checkGame(const GameCtx& g, const CheckKeys& k, const std::function<bool(plat::ExefsReport&)>& openExefs,
+               const std::string& swapPath, const std::string& swapSha,
+               const std::vector<std::pair<std::string, std::string>>& candidates, app::GameDetails& d);
+// Сбросить кэш проверки игры (после любой операции с ней). false — файл не убрался (будет промах по app/ключу
+// только при их смене; запись в журнал).
+bool dropGameCheck(const std::string& tid);
+// «Сбросить кэш»: стороны sdk в памяти моста.
+void clearMemoryCache();
 
 // Моды к игре: папки в sdmc:/switch/<APP>/mods/ (дерево мода опознаёт ядро) + то, что уже лежит в
 // atmosphere/contents/<TID> (только для показа).

@@ -181,6 +181,13 @@ static void walk_files(IFileSystem& fs, const std::string& d, std::vector<std::s
 
 std::vector<SdkEntry> scan_sdk(Env& env, const std::vector<SdkRoot>& roots, int max_depth,
                                std::vector<SdkFile>* rejected) {
+    return scan_sdk_with(
+        env, roots, [&env](const std::string& p, const std::string& label) { return identify_sdk(env, p, label); },
+        max_depth, rejected);
+}
+
+std::vector<SdkEntry> scan_sdk_with(Env& env, const std::vector<SdkRoot>& roots, const SdkIdentifyFn& identify,
+                                    int max_depth, std::vector<SdkFile>* rejected) {
     std::vector<SdkEntry> out;
     for (const auto& r : roots) {
         const std::string& root = r.dir;
@@ -189,7 +196,7 @@ std::vector<SdkEntry> scan_sdk(Env& env, const std::vector<SdkRoot>& roots, int 
         std::vector<std::string> files;
         walk_files(env.fs, root, files, 0, max_depth);
         for (auto& p : files) {
-            auto f = identify_sdk(env, p, label);
+            auto f = identify(p, label);
             if (f && !f->nnsdk && rejected) rejected->push_back(*f);
             if (!f || !f->nnsdk) continue;
             auto it = std::find_if(out.begin(), out.end(), [&](const SdkEntry& e) {
@@ -267,7 +274,7 @@ oj sdk_profile(Env& env, const std::string& exefs, const std::string* cnmt) {
     return out;
 }
 
-ForecastGame forecast_game(Env& env, const std::string& exefs) {
+ForecastGame forecast_game(Env& env, const std::string& exefs, ForecastSdk* own_side) {
     std::set<std::string> cat;
     for (auto& c : autofix_catalog()) cat.insert(c.symbol);
     ForecastGame g;
@@ -296,6 +303,7 @@ ForecastGame forecast_game(Env& env, const std::string& exefs) {
             NsoImage s = load(env, sp);
             g.own_sdk = export_stubs(s, &g.all_imports);
             g.own_sdk_ok = true;
+            if (own_side) *own_side = forecast_sdk_of(s);   // тот же образ — своя sdk не читается второй раз
         }
     } catch (const Error& e) {
         g.own_sdk_error = e.code();
@@ -305,8 +313,9 @@ ForecastGame forecast_game(Env& env, const std::string& exefs) {
     return g;
 }
 
-ForecastSdk forecast_sdk(Env& env, const std::string& sdk_path) {
-    NsoImage sdk = load(env, sdk_path);
+ForecastSdk forecast_sdk(Env& env, const std::string& sdk_path) { return forecast_sdk_of(load(env, sdk_path)); }
+
+ForecastSdk forecast_sdk_of(const NsoImage& sdk) {
     ForecastSdk s;
     s.name = sdk.module_name();
     s.known = s.name && *s.name == kSdkName;

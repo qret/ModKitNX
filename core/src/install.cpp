@@ -756,23 +756,70 @@ InstalledState inspect_installed(Env& env, const std::string& dest, const std::s
     return s;
 }
 
-std::optional<bool> installed_matches_game(Env& env, const std::string& dest, const std::string& tid,
-                                           const std::string& game_exefs, std::vector<std::string>* stale) {
+namespace {
+// Общее сравнение: game_id(имя) — ModuleId того же файла игры (hex), nullopt — файла нет / не NSO.
+std::optional<bool> matches_by(Env& env, const std::string& dest, const std::string& tid,
+                               const std::function<std::optional<std::string>(const std::string&)>& game_id,
+                               std::vector<std::string>* stale) {
     std::string base = title_dir_of(dest, tid), ex = path_join(base, "exefs");
     ReceiptRead rec = read_receipt(env, base);
     if (!rec.sane() || !rec.data.contains("zbic_files") || !rec.data["zbic_files"].is_array()) return std::nullopt;
     std::optional<bool> res;
     for (auto& z : rec.data["zbic_files"]) {
-        std::string n = z.get<std::string>(), mine = path_join(ex, n), game = path_join(game_exefs, n);
-        if (!env.fs.is_file(mine) || !env.fs.is_file(game)) continue;
-        Bytes a = env.fs.read_range(mine, 0, kNsoHeaderSize), b = env.fs.read_range(game, 0, kNsoHeaderSize);
-        NsoHeader ha, hb;
-        if (!parse_nso_header(a.data(), a.size(), ha) || !parse_nso_header(b.data(), b.size(), hb)) continue;
-        bool same = ha.module_id == hb.module_id;
+        if (!z.is_string()) continue;
+        std::string n = z.get<std::string>(), mine = path_join(ex, n);
+        if (!env.fs.is_file(mine)) continue;
+        const std::optional<std::string> theirs = game_id(n);
+        if (!theirs) continue;
+        Bytes a = env.fs.read_range(mine, 0, kNsoHeaderSize);
+        NsoHeader ha;
+        if (!parse_nso_header(a.data(), a.size(), ha)) continue;
+        bool same = ha.module_id_hex() == *theirs;
         if (!same && stale) stale->push_back(n);
         res = res.value_or(true) && same;
     }
     return res;
+}
+}  // namespace
+
+std::optional<bool> installed_matches_game(Env& env, const std::string& dest, const std::string& tid,
+                                           const std::string& game_exefs, std::vector<std::string>* stale) {
+    return matches_by(
+        env, dest, tid,
+        [&](const std::string& n) -> std::optional<std::string> {
+            const std::string game = path_join(game_exefs, n);
+            if (!env.fs.is_file(game)) return std::nullopt;
+            Bytes b = env.fs.read_range(game, 0, kNsoHeaderSize);
+            NsoHeader hb;
+            if (!parse_nso_header(b.data(), b.size(), hb)) return std::nullopt;
+            return hb.module_id_hex();
+        },
+        stale);
+}
+
+std::optional<bool> installed_matches_game(Env& env, const std::string& dest, const std::string& tid,
+                                           const std::map<std::string, std::string>& game_module_ids,
+                                           std::vector<std::string>* stale) {
+    return matches_by(
+        env, dest, tid,
+        [&](const std::string& n) -> std::optional<std::string> {
+            auto it = game_module_ids.find(n);
+            if (it == game_module_ids.end()) return std::nullopt;
+            return it->second;
+        },
+        stale);
+}
+
+std::map<std::string, std::string> exefs_module_ids(Env& env, const std::string& game_exefs) {
+    std::map<std::string, std::string> out;
+    for (const auto& e : env.fs.list_dir(game_exefs)) {
+        if (e.is_dir) continue;
+        const std::string p = path_join(game_exefs, e.name);
+        Bytes b = env.fs.read_range(p, 0, kNsoHeaderSize);
+        NsoHeader h;
+        if (parse_nso_header(b.data(), b.size(), h)) out[e.name] = h.module_id_hex();
+    }
+    return out;
 }
 
 Plan plan_uninstall(Env& env, const std::string& dest, const std::string& tid_in, bool also_files) {

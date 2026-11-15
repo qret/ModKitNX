@@ -152,4 +152,28 @@ void ctr_crypt(const uint8_t key[16], const uint8_t iv[16], const uint8_t* in, u
     std::memset(ks, 0, sizeof(ks));
 }
 
+void xts_nintendo(const uint8_t key[32], uint64_t first_sector, size_t sector_size, uint8_t* data, size_t n,
+                  bool encrypt) {
+    Aes128 k1(key), k2(key + 16);
+    uint64_t sector = first_sector;
+    for (size_t off = 0; off < n; off += sector_size, ++sector) {
+        uint8_t t[16] = {};
+        for (int i = 0; i < 8; ++i) t[15 - i] = static_cast<uint8_t>(sector >> (8 * i));   // big-endian
+        k2.encrypt_block(t, t);
+        const size_t end = (n - off) < sector_size ? n : off + sector_size;
+        for (size_t b = off; b + 16 <= end; b += 16) {
+            uint8_t x[16];
+            for (int i = 0; i < 16; ++i) x[i] = static_cast<uint8_t>(data[b + i] ^ t[i]);
+            if (encrypt) k1.encrypt_block(x, x);
+            else k1.decrypt_block(x, x);
+            for (int i = 0; i < 16; ++i) data[b + i] = static_cast<uint8_t>(x[i] ^ t[i]);
+            const uint8_t carry = t[15] >> 7;   // умножение на α в GF(2^128), little-endian
+            for (int i = 15; i > 0; --i) t[i] = static_cast<uint8_t>((t[i] << 1) | (t[i - 1] >> 7));
+            t[0] = static_cast<uint8_t>(t[0] << 1);
+            if (carry) t[0] ^= 0x87;
+        }
+        std::memset(t, 0, sizeof(t));
+    }
+}
+
 }  // namespace mk::aes

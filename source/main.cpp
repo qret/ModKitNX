@@ -7,7 +7,7 @@
 //      (так делает TorrentShopNX); borealis не поднялся — текстовая заглушка.
 //   2. Журнал, службы ns/ncm, язык (config.json; нет выбора — экран выбора языка при первом запуске).
 //   3. Borealis: окно, тема (как в системе / светлая / тёмная — config.json), список игр.
-//   4. Тихая проверка обновления (ui/update_ui); при выходе — замена .nro скачанной версией (platform/app_update).
+//   4. Один раз — «Создать ярлык на домашнем экране?» (ui/forwarder_ui, Р-43), иначе тихая проверка обновления (ui/update_ui); при выходе — замена .nro скачанной версией (platform/app_update).
 // Службы romfs/pl/set/set:sys/psm/nifm/lbl и сокеты поднимает borealis (switch_wrapper.c, userAppInit) —
 // свой userAppInit здесь не определяется, чтобы не было двойного определения.
 #include <switch.h>
@@ -115,9 +115,9 @@ int main(int argc, char* argv[]) {
 
     // Наши строки (ui/i18n) — тем же языком; при первом запуске — запасной en-US до выбора.
     mk::ui::i18n::setLanguage(askLanguage ? mk::ui::i18n::kFallback : lang);
-    brls::Application::pushActivity(new mk::ui::GamesActivity(askLanguage));
-    // Первый запуск — сначала выбор языка, окно обновления поверх него не показывается.
-    if (!askLanguage) mk::ui::update::startupCheck();
+    // Вопросы запуска — в списке игр: первый запуск — выбор языка, затем «Создать ярлык на домашнем экране?» (Р-43);
+    // окно обновления поверх них не показывается (тихая проверка — когда вопроса о ярлыке нет).
+    brls::Application::pushActivity(new mk::ui::GamesActivity(askLanguage, true));
 
     while (brls::Application::mainLoop()) {
     }

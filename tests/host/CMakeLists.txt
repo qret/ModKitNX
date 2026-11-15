@@ -31,7 +31,7 @@ add_library(mkcore STATIC
   ${CORE}/src/core.cpp ${CORE}/src/nso.cpp ${CORE}/src/zbic.cpp ${CORE}/src/zstd_bic_glue.c
   ${CORE}/src/npdm.cpp ${CORE}/src/receipt.cpp ${CORE}/src/plan.cpp ${CORE}/src/mod.cpp
   ${CORE}/src/install.cpp ${CORE}/src/sdk.cpp ${CORE}/src/nacp.cpp ${CORE}/src/logs.cpp ${CORE}/src/sdk_harvest.cpp
-  ${CORE}/src/aes128.cpp ${CORE}/src/nca.cpp
+  ${CORE}/src/aes128.cpp ${CORE}/src/nca.cpp ${CORE}/src/cache.cpp ${CORE}/src/forwarder.cpp
   ${ZSTD_SRC} ${LZ4}/lz4.c)
 target_include_directories(mkcore PUBLIC ${CORE}/include ${JSON} ${ZSTD} ${LZ4}
                            PRIVATE ${ZSTD}/common ${CORE}/src)
@@ -55,9 +55,15 @@ target_link_libraries(unit_tests PRIVATE mkhost)
 add_executable(nca_tests nca_tests.cpp)
 target_link_libraries(nca_tests PRIVATE mkcore)
 
+# Построитель форвардера (mk::forwarder, Р-43): TitleID, NPDM, NACP, три NCA с выдуманным ключом заголовка.
+add_executable(forwarder_tests forwarder_tests.cpp)
+target_link_libraries(forwarder_tests PRIVATE mkcore)
+target_compile_options(forwarder_tests PRIVATE -Wall -Wextra)
+
 enable_testing()
 add_test(NAME unit COMMAND unit_tests)
 add_test(NAME nca COMMAND nca_tests)
+add_test(NAME forwarder COMMAND forwarder_tests)
 
 # Обновление приложения и настройки (переносимая часть platform/: app_update, app_config) — подставные ответы GitHub
 # и собранные в памяти .nro, без сети (app_update_tests.cpp).
