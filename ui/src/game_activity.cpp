@@ -813,20 +813,17 @@ void GameActivity::refreshActions() {
     using mk::app::Reinstall;
     const mk::app::GameActions a = mk::app::decideGameActions(actionsInput());
 
-    // Блок sdk: «Подменить sdk» (одной подмены достаточно) / «Удалить подмену» (наша стоит).
+    // Блок sdk: «Подменить sdk» (одной подмены достаточно). Нашу подмену снимает «Удалить установленное» внизу.
     sdkButtons_->clearViews();
     if (a.sdkSwap) {
         auto* b = makeButton(tr("sdk/btn_swap"), &brls::BUTTONSTYLE_BORDERED, [this] { startOperation(OpKind::SdkSwap); });
         b->setId("sdk_swap_btn");
         sdkButtons_->addView(b);
     }
-    if (a.sdkRemove) {
-        auto* b = makeButton(tr("sdk/btn_unswap"), dangerStyle(), [this] { startOperation(OpKind::SdkUnswap); });
-        b->setId("sdk_unswap_btn");
-        sdkButtons_->addView(b);
-    }
-
     sdkChoiceBox_->setVisibility(a.sdkChoice ? brls::Visibility::VISIBLE : brls::Visibility::GONE);
+    // Скрытые строки выбора sdk не должны ловить фокус: иначе крестовина ходит по невидимым строкам, а рамка —
+    // точкой над карточкой (фото оператора 20.11.2026, Pokémon Legends: Z-A).
+    for (auto* r : sdkRows_) r->setFocusable(a.sdkChoice);
     if (debugRow_) debugRow_->setVisibility(a.debugToggle ? brls::Visibility::VISIBLE : brls::Visibility::GONE);
 
     actionsBox_->clearViews();
@@ -868,7 +865,9 @@ void GameActivity::refreshActions() {
         main = install;
     }
     if (a.uninstall) {
-        auto* un = makeButton(tr("actions/uninstall"), dangerStyle(), [this] { startOperation(OpKind::Uninstall); });
+        const bool swapOnly = a.uninstallSwapOnly;
+        auto* un = makeButton(tr("actions/uninstall"), dangerStyle(),
+                              [this, swapOnly] { startOperation(swapOnly ? OpKind::SdkUnswap : OpKind::Uninstall); });
         un->setId("uninstall_btn");
         row->addView(un);
         if (!main) main = un;

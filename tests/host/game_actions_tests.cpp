@@ -78,7 +78,8 @@ int main() {
         s.modChosen = false;
         s.swapPresent = s.swapOurs = true;
         a = decideGameActions(s);
-        CHECK(!a.installSwapOnly && a.sdkRemove, "наша подмена уже стоит — «Установить» полная, есть «Удалить подмену»");
+        CHECK(!a.installSwapOnly && a.sdkRemove && a.uninstall && a.uninstallSwapOnly,
+              "наша подмена уже стоит — «Установить» полная, снимает «Удалить установленное» (только подмену)");
         s.swapPresent = s.swapOurs = false;
         s.sdkGaps = false;
         a = decideGameActions(s);
@@ -129,7 +130,8 @@ int main() {
         s.swapNotNeeded = true;
         s.swapPresent = s.swapOurs = true;
         a = decideGameActions(s);
-        CHECK(!a.nothingNeeded && a.sdkRemove && a.install, "наша подмена стоит — «Удалить подмену», прежние правила");
+        CHECK(!a.nothingNeeded && a.sdkRemove && a.install && a.uninstall && a.uninstallSwapOnly,
+              "наша подмена стоит — снимает «Удалить установленное», прежние правила");
         s.swapPresent = s.swapOurs = false;
         s.diagReport = true;
         a = decideGameActions(s);
@@ -146,10 +148,10 @@ int main() {
         s.sdkChosen = s.sdkDiffers = true;
         s.moduleHasWork = false;
         auto a = decideGameActions(s);
-        CHECK(a.sdkRemove && !a.sdkSwap, "наша подмена — «Удалить подмену», без «Подменить»");
+        CHECK(a.sdkRemove && !a.sdkSwap && a.uninstall, "наша подмена — снимает «Удалить установленное», без «Подменить»");
         s.swapOurs = false;
         a = decideGameActions(s);
-        CHECK(!a.sdkRemove && !a.sdkSwap && !a.alsoSwaps, "чужая подмена — не трогаем");
+        CHECK(!a.sdkRemove && !a.sdkSwap && !a.alsoSwaps && !a.uninstallSwapOnly, "чужая подмена — не трогаем");
     }
     {   // Установлено без причины — «Удалить установленное», без «Установить» и «Переустановить».
         GameActionsInput s;
